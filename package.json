@@ -1,0 +1,88 @@
+{
+  "name": "lean-ctx-dashboard",
+  "displayName": "lean-ctx Dashboard",
+  "description": "Visual sidebar dashboard for lean-ctx — monitor token savings, CEP scores, cache hits, session stats, and integration health for the Context Engineering Layer.",
+  "version": "1.1.0",
+  "publisher": "lean-ctx-community",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Valkster70/lean-ctx-dashboard"
+  },
+  "homepage": "https://github.com/Valkster70/lean-ctx-dashboard#readme",
+  "bugs": {
+    "url": "https://github.com/Valkster70/lean-ctx-dashboard/issues"
+  },
+  "icon": "media/icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
+  "keywords": [
+    "lean-ctx",
+    "leanctx",
+    "context engineering",
+    "token optimization",
+    "AI coding",
+    "MCP",
+    "dashboard"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "lean-ctx",
+          "title": "lean-ctx",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "lean-ctx": [
+        {
+          "type": "webview",
+          "id": "lean-ctx.sidebar",
+          "name": "lean-ctx Control Center"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "lean-ctx.showDashboard",
+        "title": "lean-ctx: Open Dashboard UI"
+      },
+      {
+        "command": "lean-ctx.compress",
+        "title": "lean-ctx: Compress Workspace Context"
+      },
+      {
+        "command": "lean-ctx.runDoctor",
+        "title": "lean-ctx: Run Health Diagnostics"
+      },
+      {
+        "command": "lean-ctx.runDoctorFix",
+        "title": "lean-ctx: Run Health Repair"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.js --production",
+    "watch": "node esbuild.js --watch",
+    "compile": "tsc -p ./",
+    "package": "npx @vscode/vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.3.0"
+  }
+}

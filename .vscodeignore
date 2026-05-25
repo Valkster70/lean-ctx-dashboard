@@ -1,0 +1,7 @@
+.vscode/**
+.gitignore
+tsconfig.json
+esbuild.js
+src/**
+!src/webview/**
+out/**

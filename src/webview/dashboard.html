@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>lean-ctx Control Center</title>
+  <link rel="stylesheet" href="${cssUri}">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo-area">
+        <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 4h16v2.586A2 2 0 0 1 19.414 8L13 14.414V20a1 1 0 0 1-1.555.832l-3-2A1 1 0 0 1 8 18v-3.586L1.586 8A2 2 0 0 1 1 6.586V4z" />
+        </svg>
+        <span class="logo-text">lean-ctx</span>
+        <span class="version-badge" id="version-badge"></span>
+      </div>
+      <div class="status-badge" id="status-badge">Checking...</div>
+    </header>
+
+    <!-- Navigation -->
+    <nav class="nav-tabs">
+      <button class="tab-btn active" data-tab="tab-stats">
+        <span class="icon">📊</span>Stats
+      </button>
+      <button class="tab-btn" data-tab="tab-controls">
+        <span class="icon">🎛️</span>Controls
+      </button>
+      <button class="tab-btn" data-tab="tab-gotchas">
+        <span class="icon">🧠</span>Gotchas
+      </button>
+      <button class="tab-btn" data-tab="tab-doctor">
+        <span class="icon">🩺</span>Doctor
+      </button>
+    </nav>
+
+    <!-- Content Sections -->
+    <main class="content-area">
+      <!-- Tab 1: Stats -->
+      <section id="tab-stats" class="tab-content active">
+        <!-- Active Focus -->
+        <div class="card task-card" id="task-card" style="display: none;">
+          <div class="task-card-header">
+            <h3>🎯 Active Focus</h3>
+            <button id="btn-clear-task-stats" class="text-btn" title="Reset Session Task">Clear</button>
+          </div>
+          <div class="task-description" id="task-desc-val">None</div>
+        </div>
+
+        <!-- Savings ring + CEP score -->
+        <div class="card savings-card">
+          <h3>Context Optimization</h3>
+          <div class="savings-ratio-container">
+            <div class="progress-ring-wrapper">
+              <svg class="progress-ring" width="100" height="100">
+                <circle class="progress-ring-bg" stroke="var(--vscode-widget-border)" stroke-width="8" fill="transparent" r="42" cx="50" cy="50"/>
+                <circle id="savings-ring-fill" class="progress-ring-fill" stroke="var(--vscode-button-background)" stroke-width="8" fill="transparent" r="42" cx="50" cy="50" stroke-dasharray="263.89" stroke-dashoffset="263.89"/>
+              </svg>
+              <div class="savings-percentage" id="savings-pct">0%</div>
+            </div>
+            <div class="savings-details">
+              <div class="savings-label">Gain Rate</div>
+              <div class="cep-score-container">
+                <span class="cep-label">CEP Score</span>
+                <span class="cep-value" id="cep-score">—</span>
+              </div>
+              <div class="roi-container">
+                <span class="roi-label">ROI</span>
+                <span class="roi-value" id="roi-value">—</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Metrics grid -->
+        <div class="metrics-grid">
+          <div class="card metric-card">
+            <span class="metric-icon">🪙</span>
+            <div class="metric-info">
+              <span class="metric-val" id="val-saved-tokens">0</span>
+              <span class="metric-lbl">Tokens Saved</span>
+            </div>
+          </div>
+          <div class="card metric-card">
+            <span class="metric-icon">💵</span>
+            <div class="metric-info">
+              <span class="metric-val" id="val-saved-usd">$0.00</span>
+              <span class="metric-lbl">Est. Savings</span>
+            </div>
+          </div>
+          <div class="card metric-card">
+            <span class="metric-icon">⚡</span>
+            <div class="metric-info">
+              <span class="metric-val" id="val-cache-hits">0</span>
+              <span class="metric-lbl">Cache Hits</span>
+            </div>
+          </div>
+          <div class="card metric-card">
+            <span class="metric-icon">💻</span>
+            <div class="metric-info">
+              <span class="metric-val" id="val-total-cmds">0</span>
+              <span class="metric-lbl">Total Queries</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Session info -->
+        <div class="card session-card">
+          <h3>Current Session</h3>
+          <div class="session-grid">
+            <div class="session-item">
+              <span class="session-label">Files Read</span>
+              <span class="session-value" id="session-files">0</span>
+            </div>
+            <div class="session-item">
+              <span class="session-label">Tool Calls</span>
+              <span class="session-value" id="session-tools">0</span>
+            </div>
+            <div class="session-item">
+              <span class="session-label">Commands</span>
+              <span class="session-value" id="session-cmds">0</span>
+            </div>
+            <div class="session-item">
+              <span class="session-label">MCP Reads</span>
+              <span class="session-value" id="session-reads">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Daily breakdown -->
+        <div class="card daily-card">
+          <h3>Daily Activity</h3>
+          <div id="daily-chart" class="daily-chart">
+            <div class="empty-list-item">No daily data yet.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab 2: Controls -->
+      <section id="tab-controls" class="tab-content">
+        <div class="card form-card">
+          <h3>Read Mode Selection</h3>
+          <p class="description">Select the file reading strategy for your AI agent.</p>
+          <div class="form-group">
+            <label for="read-mode-select">Active Read Mode</label>
+            <select id="read-mode-select">
+              <option value="auto">auto (Optimal automated selection)</option>
+              <option value="full">full (Complete file content)</option>
+              <option value="map">map (Dependency graph + API signs)</option>
+              <option value="signatures">signatures (tree-sitter AST)</option>
+              <option value="task">task (Task-relevant snippet filter)</option>
+              <option value="aggressive">aggressive (Syntax-stripped)</option>
+              <option value="entropy">entropy (Shannon entropy split)</option>
+              <option value="diff">diff (Modified lines only)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="actions-group">
+          <button id="btn-compress" class="btn primary-btn">
+            <span class="icon">✨</span>Compress Context
+          </button>
+          <div class="card input-card">
+            <h3>Set Active Task</h3>
+            <p class="description">Contextualize lean-ctx for a specific task.</p>
+            <div class="inline-input-group">
+              <input type="text" id="task-input" placeholder="e.g. refactor auth module">
+              <button id="btn-set-task" class="btn secondary-btn">Set</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab 3: Gotchas -->
+      <section id="tab-gotchas" class="tab-content">
+        <div class="card list-card">
+          <div class="list-header">
+            <h3>Active Gotchas & Rules</h3>
+            <button id="btn-refresh-gotchas" class="icon-btn">🔄</button>
+          </div>
+          <p class="description">Self-correction lessons compiled for this repository.</p>
+          <ul id="gotchas-list" class="gotchas-list">
+            <!-- Dynamically populated -->
+            <li class="empty-list-item">No gotchas recorded yet.</li>
+          </ul>
+        </div>
+
+        <div class="card form-card">
+          <h3>Record a Lesson</h3>
+          <div class="form-group">
+            <label for="new-fact-val">Fact / Gotcha Description</label>
+            <input type="text" id="new-fact-val" placeholder="e.g., Use parameterized queries for SQL">
+          </div>
+          <div class="form-row">
+            <div class="form-group half-width">
+              <label for="new-fact-category">Category</label>
+              <input type="text" id="new-fact-category" placeholder="security">
+            </div>
+            <div class="form-group half-width">
+              <label for="new-fact-key">Key</label>
+              <input type="text" id="new-fact-key" placeholder="sql-sanitize">
+            </div>
+          </div>
+          <button id="btn-save-fact" class="btn secondary-btn">Save Fact</button>
+        </div>
+      </section>
+
+      <!-- Tab 4: Doctor -->
+      <section id="tab-doctor" class="tab-content">
+        <div class="card status-check-card">
+          <h3>Integration Health</h3>
+          <ul class="status-checks" id="doctor-checks-list">
+            <!-- Dynamically populated from doctor --json -->
+            <li class="check-item">
+              <span class="status-icon">⏳</span>
+              <div class="check-details">
+                <span class="check-title">Running diagnostics...</span>
+                <span class="check-desc">Please wait</span>
+              </div>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Connected Clients & Rules Grid -->
+        <div class="card integrations-card" id="integrations-card" style="display: none;">
+          <h3>🔌 Connected Clients</h3>
+          <p class="description">Global developer tools and editor rules managed by lean-ctx.</p>
+          <div class="integrations-grid" id="integrations-grid">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <div class="actions-group">
+          <button id="btn-doctor" class="btn secondary-btn">Run Diagnosis</button>
+          <button id="btn-doctor-fix" class="btn primary-btn danger-btn">
+            <span class="icon">🛠️</span>Repair Integrations
+          </button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="${jsUri}"></script>
+</body>
+</html>
