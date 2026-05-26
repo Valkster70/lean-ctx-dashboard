@@ -105,6 +105,18 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand("lean-ctx.launchWebDashboard", async () => {
+      try {
+        await dashboardProvider.launchWebDashboard();
+      } catch (error: any) {
+        vscode.window.showErrorMessage(
+          `Failed to launch web dashboard: ${error.message || error}`
+        );
+      }
+    })
+  );
+
   // Set up periodic stats refresh
   updateStatusBar(dashboardProvider);
   const statsTimer = setInterval(() => {

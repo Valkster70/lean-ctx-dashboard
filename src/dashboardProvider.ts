@@ -35,6 +35,30 @@ async function readJsonFile(filePath: string): Promise<any | null> {
 }
 
 /**
+ * Safely read and parse events.jsonl from bottom-up (newest first).
+ */
+async function readEventsJsonl(filePath: string, limit = 15): Promise<any[]> {
+  try {
+    if (!fs.existsSync(filePath)) return [];
+    const content = await fs.promises.readFile(filePath, "utf8");
+    const lines = content.trim().split("\n");
+    const events: any[] = [];
+    for (let i = lines.length - 1; i >= 0 && events.length < limit; i--) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      try {
+        events.push(JSON.parse(line));
+      } catch {
+        // ignore malformed lines
+      }
+    }
+    return events;
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Generates options for execPromise, ensuring standard Node/npm paths are in PATH.
  */
 function getExecOptions(timeoutMs: number, cwd?: string): any {
@@ -188,6 +212,9 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
         case "clearTask":
           await this.clearTask();
           break;
+        case "launchWebDashboard":
+          await this.launchWebDashboard();
+          break;
       }
     });
 
@@ -203,12 +230,13 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
       const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
       // Gather all data sources in parallel for speed
-      const [stats, mcpLive, costAttribution, gain, tokenReport, statusData, knowledgeData] =
+      const [stats, mcpLive, costAttribution, events, gain, tokenReport, statusData, knowledgeData] =
         await Promise.all([
           // File reads (fast, no process spawn)
           readJsonFile(path.join(dataDir, "stats.json")),
           readJsonFile(path.join(dataDir, "mcp-live.json")),
           readJsonFile(path.join(dataDir, "cost_attribution.json")),
+          readEventsJsonl(path.join(dataDir, "events.jsonl")),
           // CLI commands (slower, but give authoritative data)
           execLeanCtxJson("gain --json", workspacePath),
           execLeanCtxJson("token-report --json", workspacePath),
@@ -339,10 +367,16 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
               0
             )
           : 0,
+        costAttribution: {
+          tools: costAttribution?.tools || {},
+          agents: costAttribution?.agents || {},
+        },
         // Gotchas
         gotchas,
         // Doctor checks
         doctorChecks,
+        // Live Activity Feed events
+        activityEvents: events || [],
       });
     } catch (e: any) {
       this._view.webview.postMessage({
@@ -483,6 +517,25 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
     } catch (error: any) {
       vscode.window.showErrorMessage(
         `Failed to clear task: ${error.message || error}`
+      );
+    }
+  }
+
+  public async launchWebDashboard() {
+    try {
+      let terminal = vscode.window.terminals.find(
+        (t) => t.name === "lean-ctx dashboard"
+      );
+      if (!terminal) {
+        terminal = vscode.window.createTerminal("lean-ctx dashboard");
+        const baseCmd = await getLeanCtxCommand();
+        terminal.sendText(`${baseCmd} dashboard`);
+      }
+      terminal.show();
+      vscode.window.showInformationMessage("Launching lean-ctx web dashboard...");
+    } catch (error: any) {
+      vscode.window.showErrorMessage(
+        `Failed to launch web dashboard: ${error.message || error}`
       );
     }
   }

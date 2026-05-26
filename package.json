@@ -69,6 +69,10 @@
       {
         "command": "lean-ctx.runDoctorFix",
         "title": "lean-ctx: Run Health Repair"
+      },
+      {
+        "command": "lean-ctx.launchWebDashboard",
+        "title": "lean-ctx: Launch Web Dashboard"
       }
     ]
   },

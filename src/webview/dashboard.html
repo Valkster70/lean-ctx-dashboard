@@ -17,7 +17,16 @@
         <span class="logo-text">lean-ctx</span>
         <span class="version-badge" id="version-badge"></span>
       </div>
-      <div class="status-badge" id="status-badge">Checking...</div>
+      <div class="header-right">
+        <button id="header-btn-launch-web" class="header-icon-btn" title="Launch Web Dashboard">
+          <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <line x1="10" y1="14" x2="21" y2="3"></line>
+          </svg>
+        </button>
+        <div class="status-badge" id="status-badge">Checking...</div>
+      </div>
     </header>
 
     <!-- Navigation -->
@@ -74,6 +83,17 @@
           </div>
         </div>
 
+        <!-- Launch Web Dashboard -->
+        <div class="card launch-card">
+          <div class="launch-header">
+            <h3>🖥️ Full Web Dashboard</h3>
+          </div>
+          <p class="description">Launch the interactive web interface in a terminal & open it in your browser.</p>
+          <button id="btn-launch-web" class="btn primary-btn launch-btn">
+            <span class="icon">🚀</span>Launch Web Dashboard
+          </button>
+        </div>
+
         <!-- Metrics grid -->
         <div class="metrics-grid">
           <div class="card metric-card">
@@ -106,6 +126,21 @@
           </div>
         </div>
 
+        <!-- Cost & Spend Breakdown -->
+        <div class="card spend-card" id="spend-card" style="display: none;">
+          <div class="spend-header">
+            <h3>💵 Cost & Spend Breakdown</h3>
+          </div>
+          <p class="description">Live cost and token utilization details by tool and client.</p>
+          <div class="spend-tabs">
+            <button id="spend-tab-tools" class="spend-tab-btn active">Tools</button>
+            <button id="spend-tab-agents" class="spend-tab-btn">Agents</button>
+          </div>
+          <ul id="spend-list" class="spend-list">
+            <li class="empty-list-item">No spend data recorded yet.</li>
+          </ul>
+        </div>
+
         <!-- Session info -->
         <div class="card session-card">
           <h3>Current Session</h3>
@@ -136,6 +171,17 @@
             <div class="empty-list-item">No daily data yet.</div>
           </div>
         </div>
+
+        <!-- Live Activity Feed -->
+        <div class="card activity-card">
+          <div class="activity-header">
+            <h3>⚡ Live Activity</h3>
+            <button id="btn-refresh-activity" class="text-btn" title="Refresh Feed">Refresh</button>
+          </div>
+          <ul id="activity-list" class="activity-list">
+            <li class="empty-list-item">No recent activity detected.</li>
+          </ul>
+        </div>
       </section>
 
       <!-- Tab 2: Controls -->
@@ -155,6 +201,27 @@
               <option value="entropy">entropy (Shannon entropy split)</option>
               <option value="diff">diff (Modified lines only)</option>
             </select>
+          </div>
+          
+          <!-- Strategy Explainer UI -->
+          <div class="strategy-explainer" id="strategy-explainer" style="display: none;">
+            <div class="strategy-explainer-header">
+              <span class="strategy-badge-glow" id="explainer-badge">auto</span>
+              <span class="strategy-savings" id="explainer-savings">40% - 70% saved</span>
+            </div>
+            <div class="strategy-explainer-desc" id="explainer-desc">
+              Dynamically analyzes request context size, project structure, and file type to automatically select the most optimal compression strategy.
+            </div>
+            <div class="strategy-explainer-details">
+              <div class="detail-row">
+                <span class="detail-label">Best for:</span>
+                <span class="detail-value" id="explainer-best-for">General development and multi-file changes where context demands fluctuate.</span>
+              </div>
+            </div>
+            <div class="strategy-preview-box">
+              <div class="preview-label">Visual Context Shape</div>
+              <pre class="strategy-preview-code" id="explainer-preview">Code shape...</pre>
+            </div>
           </div>
         </div>
 
