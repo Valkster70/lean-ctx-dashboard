@@ -2,7 +2,7 @@
 
 A visual sidebar dashboard for [lean-ctx](https://github.com/yvgude/lean-ctx) — the Cognitive Context Layer for AI coding agents.
 
-Monitor your token savings, CEP scores, cache performance, session activity, and integration health directly inside VS Code, Antigravity IDE, or any VS Code-compatible editor.
+Monitor your token savings, CEP scores, cache performance, session activity, and integration health directly inside VS Code, Antigravity IDE, Codex, or any VS Code-compatible editor.
 
 ## Features
 
@@ -33,6 +33,11 @@ Monitor your token savings, CEP scores, cache performance, session activity, and
 ### Status Bar
 - Shows current gain rate: `⚡ lean-ctx: 17% saved`
 - Click to open the sidebar dashboard
+
+### Codex MCP Server
+- Exposes dashboard stats and lean-ctx controls to Codex as MCP tools
+- Supports snapshots, doctor checks, read mode changes, compression, task focus, knowledge notes, and web dashboard launch
+- See [docs/codex.md](docs/codex.md) for setup
 
 ## Prerequisites
 
@@ -81,6 +86,8 @@ Data refreshes automatically every 15 seconds and on tab switches.
 ## Configuration
 
 The extension auto-discovers the lean-ctx data directory. If you use a custom location, set the `LEAN_CTX_DATA_DIR` environment variable.
+
+For Codex, copy [codex/config.example.toml](codex/config.example.toml) into your Codex config and restart Codex.
 
 ## Contributing
 

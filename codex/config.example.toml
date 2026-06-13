@@ -1,0 +1,18 @@
+# Copy this block into ~/.codex/config.toml or a trusted project's .codex/config.toml.
+# Replace the paths with the location of your local lean-ctx-dashboard clone.
+
+[mcp_servers.lean_ctx_dashboard]
+command = "node"
+args = ["C:\\path\\to\\lean-ctx-dashboard\\codex\\mcp-server.mjs"]
+cwd = "C:\\path\\to\\lean-ctx-dashboard"
+enabled = true
+startup_timeout_sec = 20
+tool_timeout_sec = 60
+
+[mcp_servers.lean_ctx_dashboard.env]
+# Workspace used when a tool call does not provide an explicit workspace.
+CODEX_WORKSPACE = "C:\\path\\to\\your\\workspace"
+
+# Optional overrides:
+# LEAN_CTX_BIN = "C:\\path\\to\\lean-ctx.cmd"
+# LEAN_CTX_DATA_DIR = "C:\\path\\to\\.config\\lean-ctx"
