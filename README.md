@@ -1,103 +1,33 @@
-# lean-ctx Dashboard
+# Lean Context Dashboard
 
-A visual sidebar dashboard for [lean-ctx](https://github.com/yvgude/lean-ctx) — the Cognitive Context Layer for AI coding agents.
+A VS Code extension that surfaces agent/LLM context state in one dashboard panel.
 
-Monitor your token savings, CEP scores, cache performance, session activity, and integration health directly inside VS Code, Antigravity IDE, Codex, or any VS Code-compatible editor.
+## Who it's for
 
-## Features
+Anyone working with non-trivial LLM-driven coding sessions who wants visibility into what the agent currently knows about the workspace — useful when context windows are deep or many files are in play.
 
-### 📊 Stats Tab
-- **Gain Rate Ring** — live visualization of your token compression percentage
-- **CEP Score** — Context Engineering Protocol composite score (0–100)
-- **ROI Indicator** — return on investment from lean-ctx tool usage
-- **Token Savings** — total tokens saved across all sessions
-- **Estimated USD Savings** — approximate cost savings based on model pricing
-- **Cache Hits** — number of cache-served reads (13 tokens instead of ~2000)
-- **Session Info** — current session files read, tool calls, commands run
-- **Daily Activity Chart** — bar chart showing last 7 days of activity
-
-### 🎛️ Controls Tab
-- **Read Mode Selector** — switch between auto, full, map, signatures, task, aggressive, entropy, diff modes
-- **Context Compression** — trigger `lean-ctx compress` from the UI
-- **Task Assignment** — set the active task for task-mode filtering
-
-### 🧠 Gotchas Tab
-- **View gotchas** — self-correction lessons compiled for your repository
-- **Record lessons** — save facts/gotchas with category and key tagging
-
-### 🩺 Doctor Tab
-- **Live health checks** — powered by `lean-ctx doctor --json`
-- **Integration status** — shell hooks, daemon, MCP targets, agent rules
-- **One-click repair** — run `lean-ctx doctor --fix` from the UI
-
-### Status Bar
-- Shows current gain rate: `⚡ lean-ctx: 17% saved`
-- Click to open the sidebar dashboard
-
-### Codex MCP Server
-- Exposes dashboard stats and lean-ctx controls to Codex as MCP tools
-- Supports snapshots, doctor checks, read mode changes, compression, task focus, knowledge notes, and web dashboard launch
-- See [docs/codex.md](docs/codex.md) for setup
-
-## Prerequisites
-
-[lean-ctx](https://github.com/yvgude/lean-ctx) must be installed and set up:
-
-```bash
-npm install -g lean-ctx-bin
-lean-ctx setup
-```
-
-## Installation
-
-### From VSIX (Recommended)
-
-1. Download the latest `.vsix` from [Releases](https://github.com/Valkster70/lean-ctx-dashboard/releases)
-2. In VS Code / Antigravity IDE: `Ctrl+Shift+P` → "Extensions: Install from VSIX..."
-3. Select the downloaded `.vsix` file
-4. Restart the editor
-
-### From Source
+## Run it locally
 
 ```bash
 git clone https://github.com/Valkster70/lean-ctx-dashboard.git
 cd lean-ctx-dashboard
 npm install
-npm run build
-npm run package
-# Install the generated .vsix file
 ```
 
-## How It Works
+The exact build/dev scripts live in `package.json` (typical: `npm run build` to bundle via esbuild, `npm run dev` for watch mode). To load as a VS Code extension: open the folder in VS Code, press `F5` to launch an Extension Development Host with the dashboard attached. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full dev workflow.
 
-The dashboard reads data from multiple sources:
+## Project layout
 
-| Source | What it provides |
-|--------|-----------------|
-| `lean-ctx gain --json` | Token savings, gain rate, USD savings, ROI, CEP score |
-| `lean-ctx token-report --json` | Current session state (files read, tool calls, cache hits) |
-| `lean-ctx status --json` | Active mode, version, session info |
-| `lean-ctx doctor --json` | Structured health check results |
-| `~/.config/lean-ctx/stats.json` | Total commands, daily breakdown |
-| `~/.config/lean-ctx/mcp-live.json` | Real-time CEP score, cache utilization |
+- `src/` — extension source
+- `codex/` — bundled prompt/codex assets
+- `media/` — extension icon (`icon.png`, `icon.svg`)
+- `docs/` — design notes (see [`docs/codex.md`](./docs/codex.md))
+- `esbuild.js` — build config
 
-Data refreshes automatically every 15 seconds and on tab switches.
+## Live demo
 
-## Configuration
-
-The extension auto-discovers the lean-ctx data directory. If you use a custom location, set the `LEAN_CTX_DATA_DIR` environment variable.
-
-For Codex, copy [codex/config.example.toml](codex/config.example.toml) into your Codex config and restart Codex.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
+No live demo is published. Run locally per the instructions above.
 
 ## License
 
-[MIT](LICENSE)
-
-## Related
-
-- [lean-ctx](https://github.com/yvgude/lean-ctx) — The Cognitive Context Layer for AI coding agents
-- [leanctx.com](https://leanctx.com) — Official documentation
+[MIT](./LICENSE)
