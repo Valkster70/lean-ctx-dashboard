@@ -5,6 +5,32 @@
   let activeSpendTab = "tools";
   let lastCostData = { tools: {}, agents: {} };
 
+  // Set to track already rendered event timestamps to avoid duplicate animations
+  const renderedEventTimestamps = new Set();
+
+  // Pricing Model Config State
+  let currentPricingModel = localStorage.getItem("lean_ctx_pricing_model") || "sonnet";
+  let customPricePerM = parseFloat(localStorage.getItem("lean_ctx_custom_price")) || 3.00;
+  let activeChartMetric = localStorage.getItem("lean_ctx_chart_metric") || "tokens";
+  let lastStatsMessage = null;
+
+  const MODEL_PRICES = {
+    sonnet: 3.00,
+    haiku: 0.80,
+    gpt4o: 2.50,
+    "gpt4o-mini": 0.15,
+    "gemini-pro": 1.25,
+    "gemini-flash": 0.075,
+    custom: 3.00
+  };
+
+  function getActivePricePerM() {
+    if (currentPricingModel === "custom") {
+      return customPricePerM;
+    }
+    return MODEL_PRICES[currentPricingModel] || 3.00;
+  }
+
   // Tab switching
   const tabs = document.querySelectorAll(".tab-btn");
   const contents = document.querySelectorAll(".tab-content");
@@ -190,6 +216,23 @@
     });
   }
 
+  // Gotcha template pack import listener
+  const tabGotchas = document.getElementById("tab-gotchas");
+  if (tabGotchas) {
+    tabGotchas.addEventListener("click", (e) => {
+      const importBtn = e.target.closest(".import-pack-btn");
+      if (importBtn) {
+        const packId = importBtn.getAttribute("data-pack-id");
+        if (packId) {
+          vscode.postMessage({
+            type: "importTemplatePack",
+            packId: packId
+          });
+        }
+      }
+    });
+  }
+
   const btnClearTaskStats = document.getElementById("btn-clear-task-stats");
   if (btnClearTaskStats) {
     btnClearTaskStats.addEventListener("click", () => {
@@ -218,6 +261,149 @@
     newFactCategory.value = "";
     newFactKey.value = "";
   });
+
+  // Workspace Overlays UI handlers
+  const btnOverlayActive = document.getElementById("btn-overlay-active");
+  if (btnOverlayActive) {
+    btnOverlayActive.addEventListener("click", () => {
+      const mode = document.getElementById("overlay-mode").value;
+      vscode.postMessage({
+        type: "addActiveFileOverlay",
+        mode: mode
+      });
+    });
+  }
+
+  const btnAddOverlay = document.getElementById("btn-add-overlay");
+  const overlayTargetInput = document.getElementById("overlay-target");
+  if (btnAddOverlay && overlayTargetInput) {
+    btnAddOverlay.addEventListener("click", () => {
+      const target = overlayTargetInput.value.trim();
+      const mode = document.getElementById("overlay-mode").value;
+      if (!target) return;
+      vscode.postMessage({
+        type: "addOverlay",
+        target: target,
+        mode: mode
+      });
+      overlayTargetInput.value = "";
+    });
+  }
+
+  const overlaysListElement = document.getElementById("overlays-list");
+  if (overlaysListElement) {
+    // Handle inline deletes
+    overlaysListElement.addEventListener("click", (e) => {
+      const deleteBtn = e.target.closest(".delete-overlay-btn");
+      if (deleteBtn) {
+        const target = deleteBtn.getAttribute("data-target");
+        if (target) {
+          vscode.postMessage({
+            type: "removeOverlay",
+            target: target
+          });
+        }
+      }
+    });
+
+    // Handle inline dropdown changes
+    overlaysListElement.addEventListener("change", (e) => {
+      const inlineSelect = e.target.closest(".inline-mode-select");
+      if (inlineSelect) {
+        const target = inlineSelect.getAttribute("data-target");
+        const mode = inlineSelect.value;
+        if (target && mode) {
+          vscode.postMessage({
+            type: "addOverlay",
+            target: target,
+            mode: mode
+          });
+        }
+      }
+    });
+  }
+
+  // --- Interactive Context Previewer UI handlers ---
+  const btnPreviewUseActive = document.getElementById("btn-preview-use-active");
+  const previewTargetInput = document.getElementById("preview-target");
+  const previewModeSelect = document.getElementById("preview-mode-select");
+  const btnRunPreview = document.getElementById("btn-run-preview");
+
+  const previewResultsCard = document.getElementById("preview-results-card");
+  const previewFilename = document.getElementById("preview-filename");
+  const previewReductionBadge = document.getElementById("preview-reduction-badge");
+  const previewStatLines = document.getElementById("preview-stat-lines");
+  const previewStatSize = document.getElementById("preview-stat-size");
+  const previewStatTokens = document.getElementById("preview-stat-tokens");
+
+  const btnViewCompressed = document.getElementById("btn-view-compressed");
+  const btnViewOriginal = document.getElementById("btn-view-original");
+  const btnCopyPreview = document.getElementById("btn-copy-preview");
+  const previewCodeDisplay = document.getElementById("preview-code-display");
+
+  const previewLoadingCard = document.getElementById("preview-loading-card");
+  const previewErrorCard = document.getElementById("preview-error-card");
+  const previewErrorText = document.getElementById("preview-error-text");
+
+  let previewCompressedContent = "";
+  let previewOriginalContent = "";
+  let activePreviewView = "compressed";
+
+  if (btnPreviewUseActive) {
+    btnPreviewUseActive.addEventListener("click", () => {
+      vscode.postMessage({ type: "requestActiveFile" });
+    });
+  }
+
+  if (btnRunPreview) {
+    btnRunPreview.addEventListener("click", () => {
+      const target = previewTargetInput.value.trim();
+      const mode = previewModeSelect.value;
+      if (!target) return;
+
+      if (previewLoadingCard) previewLoadingCard.style.display = "block";
+      if (previewResultsCard) previewResultsCard.style.display = "none";
+      if (previewErrorCard) previewErrorCard.style.display = "none";
+
+      vscode.postMessage({
+        type: "runPreview",
+        target,
+        mode
+      });
+    });
+  }
+
+  if (btnViewCompressed) {
+    btnViewCompressed.addEventListener("click", () => {
+      activePreviewView = "compressed";
+      btnViewCompressed.classList.add("active");
+      if (btnViewOriginal) btnViewOriginal.classList.remove("active");
+      if (previewCodeDisplay) previewCodeDisplay.textContent = previewCompressedContent;
+    });
+  }
+
+  if (btnViewOriginal) {
+    btnViewOriginal.addEventListener("click", () => {
+      activePreviewView = "original";
+      btnViewOriginal.classList.add("active");
+      if (btnViewCompressed) btnViewCompressed.classList.remove("active");
+      if (previewCodeDisplay) previewCodeDisplay.textContent = previewOriginalContent;
+    });
+  }
+
+  if (btnCopyPreview) {
+    btnCopyPreview.addEventListener("click", () => {
+      const text = activePreviewView === "compressed" ? previewCompressedContent : previewOriginalContent;
+      navigator.clipboard.writeText(text).then(() => {
+        const origText = btnCopyPreview.textContent;
+        btnCopyPreview.textContent = "✅ Copied";
+        setTimeout(() => {
+          btnCopyPreview.textContent = origText;
+        }, 1500);
+      });
+    });
+  }
+
 
   // Doctor UI handlers
   const btnDoctor = document.getElementById("btn-doctor");
@@ -263,7 +449,7 @@
     return "$0.00";
   }
 
-  // Render daily activity chart
+  // Render daily activity chart with metric selection and interactive glassmorphic tooltips
   function renderDailyChart(daily) {
     const container = document.getElementById("daily-chart");
     if (!daily || daily.length === 0) {
@@ -271,29 +457,136 @@
       return;
     }
 
-    // Show last 7 days
     const recent = daily.slice(-7);
-    const maxTokens = Math.max(...recent.map((d) => d.output_tokens || d.commands || 1));
+    const gainPct = lastStatsMessage?.gainSummary?.gainRatePct || 95;
+    const pricePerM = getActivePricePerM();
+
+    // Calculate value for each day based on activeChartMetric
+    const dayValues = recent.map((d) => {
+      if (activeChartMetric === "commands") {
+        return d.commands || 0;
+      } else if (activeChartMetric === "usd") {
+        // Saved tokens * gain rate fraction * price per million
+        const savedInputTokens = (d.input_tokens || 0) * (gainPct / 100);
+        return (savedInputTokens * pricePerM) / 1000000;
+      } else {
+        // Default to tokens saved
+        return (d.input_tokens || 0) * (gainPct / 100);
+      }
+    });
+
+    const maxValue = Math.max(...dayValues, activeChartMetric === "usd" ? 0.001 : 1);
 
     let html = '<div class="daily-bars">';
-    for (const day of recent) {
-      const tokens = day.output_tokens || day.commands || 0;
-      const heightPct = maxTokens > 0 ? Math.max(4, (tokens / maxTokens) * 100) : 4;
+    recent.forEach((day, index) => {
+      const val = dayValues[index];
+      const heightPct = maxValue > 0 ? Math.max(4, (val / maxValue) * 100) : 4;
       const date = day.date || "";
       const shortDate = date.slice(5); // "MM-DD"
+      
       const cmds = day.commands || 0;
-      const saved = day.input_tokens || 0;
+      const savedInputTokens = (day.input_tokens || 0) * (gainPct / 100);
+      const usdSaved = (savedInputTokens * pricePerM) / 1000000;
 
       html += `
-        <div class="daily-bar-group" title="${date}: ${cmds} commands, ${saved} input tokens">
+        <div class="daily-bar-group">
           <div class="daily-bar" style="height: ${heightPct}%"></div>
           <span class="daily-label">${shortDate}</span>
+          <div class="daily-tooltip">
+            <div class="tooltip-date">${date}</div>
+            <div class="tooltip-row">
+              <span class="tooltip-label">Queries:</span>
+              <span class="tooltip-value">${cmds}</span>
+            </div>
+            <div class="tooltip-row">
+              <span class="tooltip-label">Saved:</span>
+              <span class="tooltip-value">${formatNumber(Math.round(savedInputTokens))} tkn</span>
+            </div>
+            <div class="tooltip-row">
+              <span class="tooltip-label">USD Saved:</span>
+              <span class="tooltip-value">${formatUsd(usdSaved)}</span>
+            </div>
+          </div>
         </div>
       `;
-    }
+    });
     html += "</div>";
     container.innerHTML = html;
   }
+
+  function applyPricingRecalculation() {
+    if (!lastStatsMessage) return;
+
+    const gain = lastStatsMessage.gainSummary || {};
+    const tokensSaved = gain.tokensSaved || 0;
+    const toolSpendUsd = gain.toolSpendUsd || 0;
+    const pricePerM = getActivePricePerM();
+
+    // Recalculate avoided USD
+    const recalculatedAvoidedUsd = (tokensSaved * pricePerM) / 1000000;
+    const valSavedUsdElement = document.getElementById("val-saved-usd");
+    if (valSavedUsdElement) {
+      valSavedUsdElement.textContent = formatUsd(recalculatedAvoidedUsd);
+    }
+
+    // Recalculate ROI
+    const roiEl = document.getElementById("roi-value");
+    if (roiEl) {
+      if (toolSpendUsd > 0) {
+        const recalculatedRoi = recalculatedAvoidedUsd / toolSpendUsd;
+        roiEl.textContent = recalculatedRoi.toFixed(1) + "x";
+      } else {
+        roiEl.textContent = "—";
+      }
+    }
+
+    // Re-render chart since USD and hover values may have changed
+    renderDailyChart(lastStatsMessage.daily || []);
+  }
+
+  // Setup pricing selector and metric listeners once DOM is parsed
+  function initPricingSimulator() {
+    const pricingModelSelect = document.getElementById("pricing-model-select");
+    const customPriceGroup = document.getElementById("custom-price-group");
+    const customPriceInput = document.getElementById("custom-price-input");
+    const chartMetricSelect = document.getElementById("chart-metric-select");
+
+    if (pricingModelSelect && customPriceInput && customPriceGroup) {
+      pricingModelSelect.value = currentPricingModel;
+      customPriceInput.value = customPricePerM;
+      customPriceGroup.style.display = currentPricingModel === "custom" ? "block" : "none";
+
+      pricingModelSelect.addEventListener("change", () => {
+        currentPricingModel = pricingModelSelect.value;
+        localStorage.setItem("lean_ctx_pricing_model", currentPricingModel);
+        customPriceGroup.style.display = currentPricingModel === "custom" ? "block" : "none";
+        applyPricingRecalculation();
+      });
+
+      customPriceInput.addEventListener("input", () => {
+        const val = parseFloat(customPriceInput.value);
+        if (!isNaN(val) && val >= 0) {
+          customPricePerM = val;
+          localStorage.setItem("lean_ctx_custom_price", customPricePerM.toString());
+          applyPricingRecalculation();
+        }
+      });
+    }
+
+    if (chartMetricSelect) {
+      chartMetricSelect.value = activeChartMetric;
+      chartMetricSelect.addEventListener("change", () => {
+        activeChartMetric = chartMetricSelect.value;
+        localStorage.setItem("lean_ctx_chart_metric", activeChartMetric);
+        if (lastStatsMessage) {
+          renderDailyChart(lastStatsMessage.daily || []);
+        }
+      });
+    }
+  }
+
+  // Call simulator init
+  setTimeout(initPricingSimulator, 50);
 
   // Render doctor checks
   function renderDoctorChecks(checks) {
@@ -395,31 +688,92 @@
     });
   }
 
+  function renderOverlaysList(overlays) {
+    const list = document.getElementById("overlays-list");
+    if (!list) return;
+
+    // Filter out overlays with empty targets or invalid structures
+    const fileOverlays = overlays.filter(o => o.target && o.target !== "file:");
+
+    if (fileOverlays.length === 0) {
+      list.innerHTML = '<li class="empty-list-item">No active file overlays configured.</li>';
+      return;
+    }
+
+    let html = "";
+    for (const o of fileOverlays) {
+      const displayPath = o.target.startsWith("file:") ? o.target.substring(5) : o.target;
+      
+      let mode = "unknown";
+      if (o.operation) {
+        if (o.operation.type === "pin") {
+          mode = "pin";
+        } else if (o.operation.type === "exclude") {
+          mode = "exclude";
+        } else if (o.operation.type === "set_view") {
+          mode = Object.keys(o.operation).find(k => k !== "type") || "unknown";
+        }
+      }
+
+      const badgeClass = `overlay-type-badge ${mode}`;
+      const badgeText = mode === "pin" ? "Pinned" : mode === "exclude" ? "Excluded" : mode;
+
+      html += `
+        <li class="overlay-item" data-target="${escapeHtml(displayPath)}">
+          <div class="overlay-details">
+            <span class="overlay-name" title="${escapeHtml(displayPath)}">${escapeHtml(displayPath)}</span>
+            <div class="overlay-meta">
+              <span class="${badgeClass}">${escapeHtml(badgeText)}</span>
+              <select class="inline-mode-select" data-target="${escapeHtml(displayPath)}">
+                <option value="pin" ${mode === "pin" ? "selected" : ""}>Pin</option>
+                <option value="exclude" ${mode === "exclude" ? "selected" : ""}>Exclude</option>
+                <option value="full" ${mode === "full" ? "selected" : ""}>full</option>
+                <option value="map" ${mode === "map" ? "selected" : ""}>map</option>
+                <option value="signatures" ${mode === "signatures" ? "selected" : ""}>signatures</option>
+                <option value="task" ${mode === "task" ? "selected" : ""}>task</option>
+                <option value="aggressive" ${mode === "aggressive" ? "selected" : ""}>aggressive</option>
+                <option value="entropy" ${mode === "entropy" ? "selected" : ""}>entropy</option>
+                <option value="diff" ${mode === "diff" ? "selected" : ""}>diff</option>
+              </select>
+            </div>
+          </div>
+          <button class="delete-overlay-btn" data-target="${escapeHtml(displayPath)}" title="Reset Overlay">🗑️</button>
+        </li>
+      `;
+    }
+    list.innerHTML = html;
+  }
+
   function renderActivityFeed(events) {
     const list = document.getElementById("activity-list");
     if (!list) return;
 
     if (!events || events.length === 0) {
       list.innerHTML = '<li class="empty-list-item">No recent activity detected.</li>';
+      renderedEventTimestamps.clear();
       return;
     }
 
-    let html = "";
-    for (const ev of events) {
+    // Remove empty state if present
+    const emptyItem = list.querySelector(".empty-list-item");
+    if (emptyItem) {
+      emptyItem.remove();
+    }
+
+    // Helper: generate HTML for a single event item inner contents
+    function createEventItemHtml(ev) {
       const kind = ev.kind || {};
       const type = kind.type || "Unknown";
       const timestamp = ev.timestamp || "";
       const shortTime = timestamp ? new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : "";
 
       let icon = "⚡";
-      let itemClass = "activity-item";
       let summary = "";
       let subtext = "";
 
       switch (type) {
         case "ToolCall":
           icon = "🛠️";
-          itemClass += " tool-call";
           summary = `Called ${kind.tool || "tool"}`;
           subtext = `
             <span class="activity-badge">${kind.mode || "default"}</span>
@@ -431,7 +785,6 @@
 
         case "Compression":
           icon = "🗜️";
-          itemClass += " compression";
           const pathParts = (kind.path || "").split("/");
           const filename = pathParts[pathParts.length - 1] || "file";
           const linesRemoved = kind.removed_line_count || 0;
@@ -445,7 +798,6 @@
 
         case "KnowledgeUpdate":
           icon = "🧠";
-          itemClass += " knowledge";
           const actionWord = kind.action === "remember" ? "Learned" : kind.action || "Updated";
           summary = `${actionWord} ${kind.category || "fact"}:${kind.key || ""}`;
           subtext = `<span>Category: ${kind.category}</span>`;
@@ -453,7 +805,6 @@
 
         case "AgentAction":
           icon = "🤖";
-          itemClass += " agent-action";
           const agentAct = kind.action || "action";
           summary = `Agent ${agentAct}`;
           subtext = `<span>ID: ${kind.agent_id ? kind.agent_id.substring(0, 10) + "..." : "unknown"}</span>`;
@@ -465,18 +816,73 @@
           break;
       }
 
-      html += `
-        <li class="${itemClass}">
-          <div class="activity-icon-wrapper">${icon}</div>
-          <div class="activity-details">
-            <div class="activity-summary">${escapeHtml(summary)}</div>
-            <div class="activity-subtext">${subtext}</div>
-          </div>
-          <div class="activity-time">${shortTime}</div>
-        </li>
+      return `
+        <div class="activity-icon-wrapper">${icon}</div>
+        <div class="activity-details">
+          <div class="activity-summary">${escapeHtml(summary)}</div>
+          <div class="activity-subtext">${subtext}</div>
+        </div>
+        <div class="activity-time">${shortTime}</div>
       `;
     }
-    list.innerHTML = html;
+
+    // Helper: apply correct CSS classes to li wrapper based on event type
+    function applyLiClasses(li, ev, animate = false) {
+      const type = ev.kind?.type || "Unknown";
+      let classes = ["activity-item"];
+      if (animate) {
+        classes.push("activity-item-slide-in");
+      }
+      if (type === "ToolCall") classes.push("tool-call");
+      else if (type === "Compression") classes.push("compression");
+      else if (type === "KnowledgeUpdate") classes.push("knowledge");
+      else if (type === "AgentAction") classes.push("agent-action");
+
+      li.className = classes.join(" ");
+    }
+
+    // If this is the very first render, populate the list statically without animations
+    if (renderedEventTimestamps.size === 0) {
+      list.innerHTML = "";
+      events.forEach((ev) => {
+        const li = document.createElement("li");
+        applyLiClasses(li, ev, false);
+        li.innerHTML = createEventItemHtml(ev);
+        list.appendChild(li);
+        if (ev.timestamp) {
+          renderedEventTimestamps.add(ev.timestamp);
+        }
+      });
+      return;
+    }
+
+    // Incremental update: Find new events that aren't already tracked.
+    // events array is newest-first, so we loop backwards to prepend oldest-new first.
+    const newEvents = [];
+    for (const ev of events) {
+      if (ev.timestamp && !renderedEventTimestamps.has(ev.timestamp)) {
+        newEvents.unshift(ev);
+      }
+    }
+
+    if (newEvents.length > 0) {
+      newEvents.forEach((ev) => {
+        const li = document.createElement("li");
+        applyLiClasses(li, ev, true);
+        li.innerHTML = createEventItemHtml(ev);
+        
+        // Prepend to top of list
+        list.insertBefore(li, list.firstChild);
+        if (ev.timestamp) {
+          renderedEventTimestamps.add(ev.timestamp);
+        }
+      });
+
+      // Prune old items exceeding the display limit (15)
+      while (list.children.length > 15) {
+        list.removeChild(list.lastChild);
+      }
+    }
   }
 
   function renderCostBreakdown() {
@@ -586,6 +992,7 @@
 
     switch (msg.type) {
       case "updateStats": {
+        lastStatsMessage = msg;
         const gain = msg.gainSummary || {};
         const session = msg.session || {};
         const mcpLive = msg.mcpLive || {};
@@ -598,6 +1005,7 @@
         const mcpTargets = msg.mcpTargets || [];
         const rulesTargets = msg.rulesTargets || [];
         const knowledgeFacts = msg.knowledgeFacts || [];
+        const overlays = msg.overlays || [];
 
         // --- Header ---
         const badge = document.getElementById("status-badge");
@@ -641,14 +1049,10 @@
         const cepEl = document.getElementById("cep-score");
         cepEl.textContent = cepScore > 0 ? cepScore + "/100" : "—";
 
-        // --- ROI ---
-        const roiEl = document.getElementById("roi-value");
-        const roi = gain.roi || 0;
-        roiEl.textContent = roi > 0 ? roi.toFixed(1) + "x" : "—";
-
-        // --- Metric cards ---
+        // --- Metric cards & simulator calculations ---
         document.getElementById("val-saved-tokens").textContent = formatNumber(gain.tokensSaved || 0);
-        document.getElementById("val-saved-usd").textContent = formatUsd(gain.avoidedUsd || 0);
+        
+        applyPricingRecalculation();
 
         // Cache hits: combine session + MCP live data
         const totalCacheHits = (session.cacheHits || 0) + (mcpLive.cacheUtilization || 0);
@@ -661,9 +1065,6 @@
         document.getElementById("session-tools").textContent = session.toolCalls || 0;
         document.getElementById("session-cmds").textContent = session.commandsRun || 0;
         document.getElementById("session-reads").textContent = mcpLive.totalReads || 0;
-
-        // --- Daily chart ---
-        renderDailyChart(daily);
 
         // --- Gotchas & Knowledge list ---
         const gotchasList = document.getElementById("gotchas-list");
@@ -717,6 +1118,81 @@
         lastCostData = msg.costAttribution || { tools: {}, agents: {} };
         renderCostBreakdown();
 
+        // --- Workspace Overlays ---
+        renderOverlaysList(overlays);
+
+        break;
+      }
+
+      case "activeFileForPreview": {
+        if (previewTargetInput) {
+          previewTargetInput.value = msg.path;
+        }
+        break;
+      }
+
+      case "updatePreview": {
+        if (previewLoadingCard) previewLoadingCard.style.display = "none";
+        if (previewErrorCard) previewErrorCard.style.display = "none";
+
+        previewCompressedContent = msg.compressedContent;
+        previewOriginalContent = msg.originalContent;
+        activePreviewView = "compressed";
+
+        if (previewFilename) previewFilename.textContent = msg.target;
+        if (previewCodeDisplay) previewCodeDisplay.textContent = msg.compressedContent;
+        
+        if (btnViewCompressed) btnViewCompressed.classList.add("active");
+        if (btnViewOriginal) btnViewOriginal.classList.remove("active");
+
+        // Stats calculations
+        const origBytes = msg.stats.originalBytes;
+        const compBytes = msg.stats.compressedBytes;
+        const origLines = msg.stats.originalLines;
+        const compLines = msg.stats.compressedLines;
+
+        // Compression ratio
+        let reductionPct = 0;
+        if (origBytes > 0) {
+          reductionPct = Math.round(((origBytes - compBytes) / origBytes) * 100);
+        }
+        if (previewReductionBadge) {
+          previewReductionBadge.textContent = `-${reductionPct}%`;
+          if (reductionPct > 60) {
+            previewReductionBadge.style.color = "var(--success-color)";
+            previewReductionBadge.style.background = "rgba(16, 185, 129, 0.12)";
+          } else if (reductionPct > 20) {
+            previewReductionBadge.style.color = "var(--accent-color)";
+            previewReductionBadge.style.background = "rgba(99, 102, 241, 0.12)";
+          } else {
+            previewReductionBadge.style.color = "var(--text-muted)";
+            previewReductionBadge.style.background = "rgba(255, 255, 255, 0.05)";
+          }
+        }
+
+        const formatBytes = (bytes) => {
+          if (bytes >= 1024) return (bytes / 1024).toFixed(1) + " KB";
+          return bytes + " B";
+        };
+
+        if (previewStatLines) previewStatLines.textContent = `${origLines} → ${compLines}`;
+        if (previewStatSize) previewStatSize.textContent = `${formatBytes(origBytes)} → ${formatBytes(compBytes)}`;
+        
+        const origTokens = Math.round(origBytes / 4);
+        const compTokens = Math.round(compBytes / 4);
+        if (previewStatTokens) previewStatTokens.textContent = `${formatNumber(origTokens)} → ${formatNumber(compTokens)}`;
+
+        if (previewResultsCard) previewResultsCard.style.display = "block";
+        break;
+      }
+
+      case "previewError": {
+        if (previewLoadingCard) previewLoadingCard.style.display = "none";
+        if (previewResultsCard) previewResultsCard.style.display = "none";
+        if (previewErrorText) {
+          previewErrorText.textContent = msg.message;
+        }
+        if (previewErrorCard) previewErrorCard.style.display = "block";
         break;
       }
 

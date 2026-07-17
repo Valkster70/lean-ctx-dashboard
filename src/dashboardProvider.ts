@@ -178,6 +178,26 @@ async function execLeanCtxJson(command: string, cwd?: string): Promise<any | nul
 export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
 
+  // Cached CLI-derived values to enable fast-path updates
+  private _lastVersion: string = "";
+  private _lastIsActive: boolean = false;
+  private _lastCurrentMode: string = "auto";
+  private _lastSessionTaskDescription: string = "";
+  private _lastMcpTargets: any[] = [];
+  private _lastRulesTargets: any[] = [];
+  private _lastKnowledgeFacts: any[] = [];
+  private _lastOverlays: any[] = [];
+  private _lastGainSummary: any = {};
+  private _lastSession: any = {};
+  private _lastCep: any = {};
+  private _lastGotchas: string[] = [];
+  private _lastDoctorChecks: any[] = [];
+
+  // File watchers and timeouts
+  private _watcher?: fs.FSWatcher;
+  private _workspaceWatcher?: fs.FSWatcher;
+  private _debouncedRefreshTimeout?: NodeJS.Timeout;
+
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
   public resolveWebviewView(
@@ -198,7 +218,7 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
     webviewView.webview.onDidReceiveMessage(async (data) => {
       switch (data.type) {
         case "refresh":
-          this.refreshStats();
+          this.refreshStats(true);
           break;
         case "setReadMode":
           await this.setReadMode(data.mode);
@@ -209,107 +229,293 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
         case "removeKnowledge":
           await this.removeKnowledge(data.category, data.key);
           break;
+        case "importTemplatePack":
+          await this.importTemplatePack(data.packId);
+          break;
         case "clearTask":
           await this.clearTask();
           break;
         case "launchWebDashboard":
           await this.launchWebDashboard();
           break;
+        case "addOverlay":
+          await this.addOverlay(data.target, data.mode);
+          break;
+        case "removeOverlay":
+          await this.removeOverlay(data.target);
+          break;
+        case "addActiveFileOverlay":
+          await this.addActiveFileOverlay(data.mode);
+          break;
+        case "requestActiveFile":
+          this.sendActiveFileToPreview();
+          break;
+        case "runPreview":
+          await this.runPreview(data.target, data.mode);
+          break;
       }
     });
 
-    // Initial load of stats
-    this.refreshStats();
+    // Start watching events and state files
+    this._setupFileWatcher();
+
+    // Clean up when webview is disposed
+    webviewView.onDidDispose(() => {
+      this._disposeFileWatcher();
+    });
+
+    // Initial load of stats (full CLI fetch)
+    this.refreshStats(true);
   }
 
-  public async refreshStats() {
+  /**
+   * Set up file watchers on key lean-ctx files to enable instant, real-time streaming updates.
+   */
+  private _setupFileWatcher() {
+    this._disposeFileWatcher();
+
+    const dataDir = getDataDir();
+    if (!fs.existsSync(dataDir)) {
+      try {
+        fs.mkdirSync(dataDir, { recursive: true });
+      } catch (err) {
+        outputChannel.appendLine(`[Warning] Failed to create data directory for watching: ${err}`);
+        return;
+      }
+    }
+
+    try {
+      let watcherTimeout: NodeJS.Timeout | null = null;
+      outputChannel.appendLine(`[Info] Starting configuration directory watcher on: ${dataDir}`);
+      
+      this._watcher = fs.watch(dataDir, (_, filename) => {
+        // Watch key fast-read files
+        const keyFiles = ["events.jsonl", "mcp-live.json", "stats.json", "cost_attribution.json"];
+        if (filename && !keyFiles.includes(filename)) return;
+
+        // Throttling/Debouncing watcher triggers to avoid duplicate reads during simultaneous writes
+        if (watcherTimeout) clearTimeout(watcherTimeout);
+        watcherTimeout = setTimeout(async () => {
+          outputChannel.appendLine(`[Info] State file changed: ${filename}. Triggering fast refresh.`);
+          
+          // Trigger fast-path refresh immediately
+          await this.refreshStats(false);
+
+          // Schedule/Debounce full CLI refresh after 1500ms of quiet time
+          if (this._debouncedRefreshTimeout) clearTimeout(this._debouncedRefreshTimeout);
+          this._debouncedRefreshTimeout = setTimeout(async () => {
+            outputChannel.appendLine(`[Info] Quiet period elapsed. Triggering full CLI stats refresh.`);
+            await this.refreshStats(true);
+          }, 1500);
+
+        }, 50); // 50ms batch window
+      });
+    } catch (err: any) {
+      outputChannel.appendLine(`[Warning] Failed to start config directory watcher: ${err.message || err}`);
+    }
+
+    // Also watch workspace overlays file if active workspace exists
+    const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (workspacePath) {
+      const workspaceLeanCtxDir = path.join(workspacePath, ".lean-ctx");
+      if (fs.existsSync(workspaceLeanCtxDir)) {
+        try {
+          let workspaceWatcherTimeout: NodeJS.Timeout | null = null;
+          outputChannel.appendLine(`[Info] Starting workspace overlays watcher on: ${workspaceLeanCtxDir}`);
+          
+          this._workspaceWatcher = fs.watch(workspaceLeanCtxDir, (_, filename) => {
+            if (filename === "overlays.json") {
+              if (workspaceWatcherTimeout) clearTimeout(workspaceWatcherTimeout);
+              workspaceWatcherTimeout = setTimeout(async () => {
+                outputChannel.appendLine(`[Info] Overlays file changed. Triggering fast refresh.`);
+                await this.refreshStats(false);
+              }, 50);
+            }
+          });
+        } catch (err: any) {
+          outputChannel.appendLine(`[Warning] Failed to start workspace overlays watcher: ${err.message || err}`);
+        }
+      }
+    }
+  }
+
+  /**
+   * Stop and clear all active file watchers and debouncing timers.
+   */
+  private _disposeFileWatcher() {
+    if (this._watcher) {
+      try {
+        this._watcher.close();
+      } catch {}
+      this._watcher = undefined;
+    }
+    if (this._workspaceWatcher) {
+      try {
+        this._workspaceWatcher.close();
+      } catch {}
+      this._workspaceWatcher = undefined;
+    }
+    if (this._debouncedRefreshTimeout) {
+      clearTimeout(this._debouncedRefreshTimeout);
+      this._debouncedRefreshTimeout = undefined;
+    }
+  }
+
+  public async refreshStats(forceFull = true) {
     if (!this._view) return;
 
     try {
       const dataDir = getDataDir();
       const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      const overlaysPath = workspacePath ? path.join(workspacePath, ".lean-ctx", "overlays.json") : "";
 
-      // Gather all data sources in parallel for speed
-      const [stats, mcpLive, costAttribution, events, gain, tokenReport, statusData, knowledgeData] =
-        await Promise.all([
-          // File reads (fast, no process spawn)
-          readJsonFile(path.join(dataDir, "stats.json")),
-          readJsonFile(path.join(dataDir, "mcp-live.json")),
-          readJsonFile(path.join(dataDir, "cost_attribution.json")),
-          readEventsJsonl(path.join(dataDir, "events.jsonl")),
-          // CLI commands (slower, but give authoritative data)
-          execLeanCtxJson("gain --json", workspacePath),
-          execLeanCtxJson("token-report --json", workspacePath),
-          execLeanCtxJson("status --json", workspacePath),
-          execLeanCtxJson("knowledge export --format json", workspacePath),
-        ]);
+      let stats: any = null;
+      let mcpLive: any = null;
+      let costAttribution: any = null;
+      let events: any[] = [];
+      let overlaysData: any = null;
 
-      // Extract version from status or token-report
-      const version = statusData?.version || tokenReport?.version || "";
+      // Slower CLI command data sources
+      let gain: any = null;
+      let tokenReport: any = null;
+      let statusData: any = null;
+      let knowledgeData: any = null;
 
-      // Extract current mode from status
-      let currentMode = "auto";
-      if (statusData) {
-        // status --json returns the full status report; mode might be nested
-        // The setup_report and session info are inside. We look for mode in the session or top level.
-        currentMode = statusData.mode || statusData.read_mode || "auto";
-      }
+      if (forceFull) {
+        // Full path: Gather all data sources in parallel (including slower CLI processes)
+        const [statsVal, mcpLiveVal, costAttributionVal, eventsVal, gainVal, tokenReportVal, statusDataVal, knowledgeDataVal, overlaysDataVal] =
+          await Promise.all([
+            readJsonFile(path.join(dataDir, "stats.json")),
+            readJsonFile(path.join(dataDir, "mcp-live.json")),
+            readJsonFile(path.join(dataDir, "cost_attribution.json")),
+            readEventsJsonl(path.join(dataDir, "events.jsonl")),
+            execLeanCtxJson("gain --json", workspacePath),
+            execLeanCtxJson("token-report --json", workspacePath),
+            execLeanCtxJson("status --json", workspacePath),
+            execLeanCtxJson("knowledge export --format json", workspacePath),
+            overlaysPath ? readJsonFile(overlaysPath) : Promise.resolve(null),
+          ]);
 
-      // Determine active/inactive status
-      let isActive = false;
-      if (statusData) {
-        // If we got a response from status --json, lean-ctx is installed and working
-        isActive = true;
-      }
+        stats = statsVal;
+        mcpLive = mcpLiveVal;
+        costAttribution = costAttributionVal;
+        events = eventsVal;
+        overlaysData = overlaysDataVal;
 
-      // Extract gain summary (the key data source for savings)
-      const gainSummary = gain?.summary || {};
+        gain = gainVal;
+        tokenReport = tokenReportVal;
+        statusData = statusDataVal;
+        knowledgeData = knowledgeDataVal;
 
-      // Extract session from token-report
-      const session = tokenReport?.session || {};
+        // Update cached CLI-derived values
+        this._lastVersion = statusData?.version || tokenReport?.version || "";
+        this._lastIsActive = !!statusData;
+        this._lastCurrentMode = statusData?.mode || statusData?.read_mode || "auto";
+        this._lastMcpTargets = statusData?.mcp_targets || [];
+        this._lastRulesTargets = statusData?.rules_targets || [];
+        this._lastKnowledgeFacts = knowledgeData?.facts || [];
+        this._lastOverlays = overlaysData?.overlays || [];
+        this._lastGainSummary = gain?.summary || {};
+        this._lastSession = tokenReport?.session || {};
+        this._lastCep = tokenReport?.cep || stats?.cep || {};
+        this._lastDoctorChecks = this._parseDoctorResults(statusData);
 
-      // Extract CEP data from token-report or stats
-      const cep = tokenReport?.cep || stats?.cep || {};
-
-      // Extract active task from session file
-      let sessionTaskDescription = "";
-      try {
-        const latestSessionInfo = await readJsonFile(path.join(dataDir, "sessions", "latest.json"));
-        if (latestSessionInfo && latestSessionInfo.id) {
-          const sessionData = await readJsonFile(path.join(dataDir, "sessions", `${latestSessionInfo.id}.json`));
-          sessionTaskDescription = sessionData?.task?.description || "";
+        // Fetch gotchas (text output, not JSON)
+        try {
+          const baseCmd = await getLeanCtxCommand();
+          const fullCommand = `${baseCmd} gotchas list`;
+          const options = getExecOptions(5000, workspacePath);
+          const { stdout } = await execPromise(fullCommand, options);
+          this._lastGotchas = stdout.toString()
+            .split("\n")
+            .map((line: string) => line.trim())
+            .filter(
+              (line: string) =>
+                line.length > 0 &&
+                !line.startsWith("Gotchas:") &&
+                !line.startsWith("---") &&
+                !line.startsWith("No gotchas")
+            );
+        } catch (err: any) {
+          outputChannel.appendLine(`[Warning] Failed to fetch gotchas: ${err.message || err}`);
         }
-      } catch (err) {
-        outputChannel.appendLine(`[Warning] Failed to read session file: ${err}`);
+
+        // Extract active task from session file
+        try {
+          const latestSessionInfo = await readJsonFile(path.join(dataDir, "sessions", "latest.json"));
+          if (latestSessionInfo && latestSessionInfo.id) {
+            const sessionData = await readJsonFile(path.join(dataDir, "sessions", `${latestSessionInfo.id}.json`));
+            this._lastSessionTaskDescription = sessionData?.task?.description || "";
+          } else {
+            this._lastSessionTaskDescription = "";
+          }
+        } catch (err) {
+          outputChannel.appendLine(`[Warning] Failed to read session file: ${err}`);
+        }
+      } else {
+        // Fast-path: Only read files (very fast, no CLI processes spawned)
+        const [statsVal, mcpLiveVal, costAttributionVal, eventsVal, overlaysDataVal] =
+          await Promise.all([
+            readJsonFile(path.join(dataDir, "stats.json")),
+            readJsonFile(path.join(dataDir, "mcp-live.json")),
+            readJsonFile(path.join(dataDir, "cost_attribution.json")),
+            readEventsJsonl(path.join(dataDir, "events.jsonl")),
+            overlaysPath ? readJsonFile(overlaysPath) : Promise.resolve(null),
+          ]);
+
+        stats = statsVal;
+        mcpLive = mcpLiveVal;
+        costAttribution = costAttributionVal;
+        events = eventsVal;
+        overlaysData = overlaysDataVal;
+
+        if (overlaysData) {
+          this._lastOverlays = overlaysData.overlays || [];
+        }
       }
 
-      // Extract targets from status report
-      const mcpTargets = statusData?.mcp_targets || [];
-      const rulesTargets = statusData?.rules_targets || [];
+      // Fetch from cached / merged state
+      const version = this._lastVersion;
+      const isActive = this._lastIsActive;
+      const currentMode = this._lastCurrentMode;
+      const sessionTaskDescription = this._lastSessionTaskDescription;
+      const mcpTargets = this._lastMcpTargets;
+      const rulesTargets = this._lastRulesTargets;
+      const knowledgeFacts = this._lastKnowledgeFacts;
+      const overlays = this._lastOverlays;
+      const gotchas = this._lastGotchas;
+      const doctorChecks = this._lastDoctorChecks;
 
-      // Fetch gotchas (text output, not JSON)
-      let gotchas: string[] = [];
-      try {
-        const baseCmd = await getLeanCtxCommand();
-        const fullCommand = `${baseCmd} gotchas list`;
-        const options = getExecOptions(5000, workspacePath);
-        const { stdout } = await execPromise(fullCommand, options);
-        gotchas = stdout.toString()
-          .split("\n")
-          .map((line: string) => line.trim())
-          .filter(
-            (line: string) =>
-              line.length > 0 &&
-              !line.startsWith("Gotchas:") &&
-              !line.startsWith("---") &&
-              !line.startsWith("No gotchas")
-          );
-      } catch (err: any) {
-        outputChannel.appendLine(`[Warning] Failed to fetch gotchas: ${err.message || err}`);
-      }
+      // Extract gain summary (fallback to cached CLI info)
+      const gainSummary = {
+        tokensSaved: this._lastGainSummary.tokens_saved || 0,
+        gainRatePct: this._lastGainSummary.gain_rate_pct || 0,
+        avoidedUsd: this._lastGainSummary.avoided_usd || 0,
+        totalCommands: this._lastGainSummary.total_commands || stats?.total_commands || 0,
+        toolSpendUsd: this._lastGainSummary.tool_spend_usd || 0,
+        roi: this._lastGainSummary.roi || 0,
+        score: this._lastGainSummary.score || {},
+      };
 
-      // Parse doctor results into structured checks
-      const doctorChecks = this._parseDoctorResults(statusData);
+      // Extract session (fallback to cached CLI info)
+      const session = {
+        id: this._lastSession.id || "",
+        startedAt: this._lastSession.started_at || "",
+        toolCalls: this._lastSession.tool_calls || 0,
+        tokensSaved: this._lastSession.tokens_saved || 0,
+        cacheHits: this._lastSession.cache_hits || 0,
+        filesRead: this._lastSession.files_read || 0,
+        commandsRun: this._lastSession.commands_run || 0,
+      };
+
+      // Extract CEP data (fallback to cached CLI info or fast stats.json)
+      const cep = {
+        sessions: this._lastCep.sessions || 0,
+        totalCacheHits: this._lastCep.total_cache_hits || 0,
+        totalCacheReads: this._lastCep.total_cache_reads || 0,
+        tokensOriginal: this._lastCep.total_tokens_original || 0,
+        tokensCompressed: this._lastCep.total_tokens_compressed || 0,
+      };
 
       // Send the complete data payload to webview
       this._view.webview.postMessage({
@@ -320,36 +526,11 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
         sessionTaskDescription,
         mcpTargets,
         rulesTargets,
-        knowledgeFacts: knowledgeData?.facts || [],
-        // Gain data (primary source for savings metrics)
-        gainSummary: {
-          tokensSaved: gainSummary.tokens_saved || 0,
-          gainRatePct: gainSummary.gain_rate_pct || 0,
-          avoidedUsd: gainSummary.avoided_usd || 0,
-          totalCommands: gainSummary.total_commands || stats?.total_commands || 0,
-          toolSpendUsd: gainSummary.tool_spend_usd || 0,
-          roi: gainSummary.roi || 0,
-          score: gainSummary.score || {},
-        },
-        // Session data
-        session: {
-          id: session.id || "",
-          startedAt: session.started_at || "",
-          toolCalls: session.tool_calls || 0,
-          tokensSaved: session.tokens_saved || 0,
-          cacheHits: session.cache_hits || 0,
-          filesRead: session.files_read || 0,
-          commandsRun: session.commands_run || 0,
-        },
-        // CEP scores
-        cep: {
-          sessions: cep.sessions || 0,
-          totalCacheHits: cep.total_cache_hits || 0,
-          totalCacheReads: cep.total_cache_reads || 0,
-          tokensOriginal: cep.total_tokens_original || 0,
-          tokensCompressed: cep.total_tokens_compressed || 0,
-        },
-        // MCP live data
+        knowledgeFacts: knowledgeFacts || [],
+        overlays: overlays || [],
+        gainSummary,
+        session,
+        cep,
         mcpLive: {
           cepScore: mcpLive?.cep_score || 0,
           cacheUtilization: mcpLive?.cache_utilization || 0,
@@ -358,9 +539,7 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
           totalReads: mcpLive?.total_reads || 0,
           toolCalls: mcpLive?.tool_calls || 0,
         },
-        // Daily breakdown from stats
         daily: stats?.daily || [],
-        // Cost attribution
         costUsd: costAttribution?.tools
           ? Object.values(costAttribution.tools as Record<string, any>).reduce(
               (sum: number, t: any) => sum + (t.cost_usd || 0),
@@ -371,11 +550,8 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
           tools: costAttribution?.tools || {},
           agents: costAttribution?.agents || {},
         },
-        // Gotchas
         gotchas,
-        // Doctor checks
         doctorChecks,
-        // Live Activity Feed events
         activityEvents: events || [],
       });
     } catch (e: any) {
@@ -483,6 +659,86 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private async importTemplatePack(packId: string) {
+    const packs: Record<string, { val: string; key: string; cat: string }[]> = {
+      compose: [
+        {
+          val: "Always specify unique keys in LazyColumn/LazyRow items to prevent unnecessary recompositions.",
+          cat: "compose",
+          key: "lazy-keys"
+        },
+        {
+          val: "Avoid reading mutableStateOf directly in layout or draw phases; wrap in lambda or use derivedStateOf to defer reading.",
+          cat: "compose",
+          key: "state-read"
+        },
+        {
+          val: "Use rememberUpdatedState for callbacks in LaunchedEffect to avoid capturing stale state without restarting the effect.",
+          cat: "compose",
+          key: "effect-callbacks"
+        }
+      ],
+      vscode: [
+        {
+          val: "Always push disposables to context.subscriptions to prevent memory leaks on extension deactivation.",
+          cat: "vscode",
+          key: "disposal-leak"
+        },
+        {
+          val: "Avoid using any types in typescript; use unknown with type guards to maintain type safety.",
+          cat: "vscode",
+          key: "strict-types"
+        },
+        {
+          val: "Use try-finally when editing workspace edits or opening documents to ensure locks/state are released.",
+          cat: "vscode",
+          key: "workspace-locks"
+        }
+      ],
+      security: [
+        {
+          val: "Never concatenate strings for SQL queries; use parameterized queries or knex/prisma bindings.",
+          cat: "security",
+          key: "sql-injection"
+        },
+        {
+          val: "Do not use innerHTML to insert user input; use textContent or dompurify to prevent XSS.",
+          cat: "security",
+          key: "xss-innerhtml"
+        },
+        {
+          val: "Set secure and httpOnly flags on sensitive cookies to mitigate session hijacking.",
+          cat: "security",
+          key: "secure-cookies"
+        }
+      ]
+    };
+
+    const pack = packs[packId];
+    if (!pack) {
+      vscode.window.showErrorMessage(`Unknown templates pack: ${packId}`);
+      return;
+    }
+
+    try {
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: `Importing ${packId} templates...`,
+        cancellable: false
+      }, async () => {
+        await Promise.all(
+          pack.map(fact =>
+            this.runCLICommand(`knowledge remember "${fact.val}" --category ${fact.cat} --key ${fact.key}`)
+          )
+        );
+        vscode.window.showInformationMessage(`Successfully imported [${packId}] gotchas template pack.`);
+        await this.refreshStats(true);
+      });
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to import template pack: ${error.message || error}`);
+    }
+  }
+
   private async executeCLICommand(command: string) {
     try {
       await this.runCLICommand(command);
@@ -518,6 +774,149 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
       vscode.window.showErrorMessage(
         `Failed to clear task: ${error.message || error}`
       );
+    }
+  }
+
+  private async addOverlay(target: string, mode: string) {
+    try {
+      if (!target) return;
+      if (mode === "pin") {
+        await this.runCLICommand(`control pin "${target}"`);
+      } else if (mode === "exclude") {
+        await this.runCLICommand(`control exclude "${target}"`);
+      } else {
+        await this.runCLICommand(`control set_view "${target}" --value ${mode}`);
+      }
+      vscode.window.showInformationMessage(`Overlay set for ${target}: ${mode}`);
+      this.refreshStats();
+    } catch (error: any) {
+      vscode.window.showErrorMessage(
+        `Failed to set overlay: ${error.message || error}`
+      );
+    }
+  }
+
+  private async removeOverlay(target: string) {
+    try {
+      if (!target) return;
+      await this.runCLICommand(`control reset "${target}"`);
+      vscode.window.showInformationMessage(`Overlay reset for ${target}`);
+      this.refreshStats();
+    } catch (error: any) {
+      vscode.window.showErrorMessage(
+        `Failed to reset overlay: ${error.message || error}`
+      );
+    }
+  }
+
+  private async addActiveFileOverlay(mode: string) {
+    try {
+      const activeEditor = vscode.window.activeTextEditor;
+      if (!activeEditor) {
+        vscode.window.showWarningMessage("No active editor found to overlay.");
+        return;
+      }
+      const fsPath = activeEditor.document.uri.fsPath;
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      if (!workspaceFolder) {
+        vscode.window.showWarningMessage("No workspace folder open.");
+        return;
+      }
+      const workspacePath = workspaceFolder.uri.fsPath;
+      let relativePath = path.relative(workspacePath, fsPath);
+      relativePath = relativePath.replace(/\\/g, "/");
+
+      await this.addOverlay(relativePath, mode);
+    } catch (error: any) {
+      vscode.window.showErrorMessage(
+        `Failed to add active file overlay: ${error.message || error}`
+      );
+    }
+  }
+
+  private sendActiveFileToPreview() {
+    if (!this._view) return;
+    const activeEditor = vscode.window.activeTextEditor;
+    if (!activeEditor) {
+      vscode.window.showWarningMessage("No active editor open.");
+      return;
+    }
+    const fsPath = activeEditor.document.uri.fsPath;
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!workspaceFolder) {
+      vscode.window.showWarningMessage("No workspace folder open.");
+      return;
+    }
+    const workspacePath = workspaceFolder.uri.fsPath;
+    let relativePath = path.relative(workspacePath, fsPath);
+    relativePath = relativePath.replace(/\\/g, "/");
+
+    this._view.webview.postMessage({
+      type: "activeFileForPreview",
+      path: relativePath
+    });
+  }
+
+  private async runPreview(target: string, mode: string) {
+    if (!this._view) return;
+    try {
+      if (!target) {
+        throw new Error("No target file specified.");
+      }
+
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      if (!workspaceFolder) {
+        throw new Error("No workspace folder open.");
+      }
+      const workspacePath = workspaceFolder.uri.fsPath;
+      
+      let relativePath = target.replace(/\\/g, "/");
+      if (relativePath.startsWith("file:")) {
+        relativePath = relativePath.substring(5);
+      }
+      
+      const fullPath = path.resolve(workspacePath, relativePath);
+      
+      if (!fullPath.startsWith(workspacePath)) {
+        throw new Error("Target file must be within the active workspace.");
+      }
+      
+      if (!fs.existsSync(fullPath)) {
+        throw new Error(`File not found: ${relativePath}`);
+      }
+
+      const stat = fs.statSync(fullPath);
+      if (stat.isDirectory()) {
+        throw new Error(`Target is a directory: ${relativePath}`);
+      }
+
+      const originalContent = await fs.promises.readFile(fullPath, "utf8");
+      
+      const baseCmd = await getLeanCtxCommand();
+      const options = getExecOptions(15000, workspacePath);
+      const cmd = `${baseCmd} read "${relativePath}" -m ${mode}`;
+      
+      const { stdout } = await execPromise(cmd, options);
+      const compressedContent = stdout.toString();
+      
+      this._view.webview.postMessage({
+        type: "updatePreview",
+        target: relativePath,
+        mode,
+        originalContent,
+        compressedContent,
+        stats: {
+          originalBytes: originalContent.length,
+          originalLines: originalContent.split("\n").length,
+          compressedBytes: compressedContent.length,
+          compressedLines: compressedContent.split("\n").length
+        }
+      });
+    } catch (error: any) {
+      this._view.webview.postMessage({
+        type: "previewError",
+        message: error.message || "Failed to generate preview."
+      });
     }
   }
 

@@ -43,6 +43,9 @@
       <button class="tab-btn" data-tab="tab-doctor">
         <span class="icon">🩺</span>Doctor
       </button>
+      <button class="tab-btn" data-tab="tab-preview">
+        <span class="icon">🔍</span>Preview
+      </button>
     </nav>
 
     <!-- Content Sections -->
@@ -126,6 +129,32 @@
           </div>
         </div>
 
+        <!-- Model Pricing Simulator -->
+        <div class="card pricing-card">
+          <div class="pricing-header">
+            <h3>💰 Pricing Model Simulator</h3>
+          </div>
+          <p class="description">Select your LLM to simulate exact token cost & ROI savings.</p>
+          <div class="pricing-simulator-row">
+            <div class="form-group flex-2">
+              <label for="pricing-model-select">Active Model Preset</label>
+              <select id="pricing-model-select">
+                <option value="sonnet" selected>Claude 3.5 Sonnet ($3.00/M saved)</option>
+                <option value="haiku">Claude 3.5 Haiku ($0.80/M saved)</option>
+                <option value="gpt4o">GPT-4o ($2.50/M saved)</option>
+                <option value="gpt4o-mini">GPT-4o Mini ($0.15/M saved)</option>
+                <option value="gemini-pro">Gemini 1.5 Pro ($1.25/M saved)</option>
+                <option value="gemini-flash">Gemini 1.5 Flash ($0.075/M saved)</option>
+                <option value="custom">Custom Pricing...</option>
+              </select>
+            </div>
+            <div class="form-group flex-1 custom-price-group" id="custom-price-group" style="display: none;">
+              <label for="custom-price-input">$/M Tokens</label>
+              <input type="number" id="custom-price-input" placeholder="3.00" step="0.01" min="0">
+            </div>
+          </div>
+        </div>
+
         <!-- Cost & Spend Breakdown -->
         <div class="card spend-card" id="spend-card" style="display: none;">
           <div class="spend-header">
@@ -166,7 +195,14 @@
 
         <!-- Daily breakdown -->
         <div class="card daily-card">
-          <h3>Daily Activity</h3>
+          <div class="daily-header">
+            <h3>Daily Activity</h3>
+            <select id="chart-metric-select" class="chart-metric-select" title="Toggle Chart Metric">
+              <option value="tokens" selected>Tokens Saved</option>
+              <option value="commands">Queries Run</option>
+              <option value="usd">USD Saved</option>
+            </select>
+          </div>
           <div id="daily-chart" class="daily-chart">
             <div class="empty-list-item">No daily data yet.</div>
           </div>
@@ -225,6 +261,43 @@
           </div>
         </div>
 
+        <!-- Workspace Overlays Manager Card -->
+        <div class="card overlays-card">
+          <div class="overlays-card-header">
+            <h3>🗂️ Workspace Overlays</h3>
+            <button id="btn-overlay-active" class="text-btn" title="Add overlay for active editor file">Overlay Active File</button>
+          </div>
+          <p class="description">Force file-specific context settings (pins, exclusions, or read modes).</p>
+          
+          <!-- Add overlay form -->
+          <div class="overlay-form">
+            <div class="form-row">
+              <div class="form-group two-thirds-width">
+                <input type="text" id="overlay-target" placeholder="File path (e.g. src/auth.ts)">
+              </div>
+              <div class="form-group third-width">
+                <select id="overlay-mode">
+                  <option value="pin">Pin (Full)</option>
+                  <option value="exclude">Exclude</option>
+                  <option value="full">Mode: full</option>
+                  <option value="map">Mode: map</option>
+                  <option value="signatures">Mode: signatures</option>
+                  <option value="task">Mode: task</option>
+                  <option value="aggressive">Mode: aggressive</option>
+                  <option value="entropy">Mode: entropy</option>
+                  <option value="diff">Mode: diff</option>
+                </select>
+              </div>
+              <button id="btn-add-overlay" class="btn secondary-btn plus-btn" title="Add File Overlay">+</button>
+            </div>
+          </div>
+
+          <!-- Active Overlays List -->
+          <ul id="overlays-list" class="overlays-list">
+            <li class="empty-list-item">No active file overlays configured.</li>
+          </ul>
+        </div>
+
         <div class="actions-group">
           <button id="btn-compress" class="btn primary-btn">
             <span class="icon">✨</span>Compress Context
@@ -252,6 +325,40 @@
             <!-- Dynamically populated -->
             <li class="empty-list-item">No gotchas recorded yet.</li>
           </ul>
+        </div>
+
+        <!-- Gotchas Templates Card -->
+        <div class="card templates-card">
+          <h3>📚 Quick Import Templates</h3>
+          <p class="description">Import pre-compiled gotcha packs to seed this repository's knowledge base.</p>
+          <div class="templates-grid">
+            <div class="template-pack-card">
+              <div class="template-pack-header">
+                <span class="pack-icon">🤖</span>
+                <span class="template-pack-title">Jetpack Compose</span>
+              </div>
+              <p class="pack-description">Keys in lazy layouts, state reading optimization, and effect lifecycle callbacks.</p>
+              <button class="btn secondary-btn import-pack-btn" data-pack-id="compose">Import Pack</button>
+            </div>
+            
+            <div class="template-pack-card">
+              <div class="template-pack-header">
+                <span class="pack-icon">📜</span>
+                <span class="template-pack-title">TS & VS Code API</span>
+              </div>
+              <p class="pack-description">Resource disposal memory leaks, strict type validation, and try-finally locks.</p>
+              <button class="btn secondary-btn import-pack-btn" data-pack-id="vscode">Import Pack</button>
+            </div>
+            
+            <div class="template-pack-card">
+              <div class="template-pack-header">
+                <span class="pack-icon">🔒</span>
+                <span class="template-pack-title">Web Security</span>
+              </div>
+              <p class="pack-description">Parameterized SQL queries, innerHTML XSS prevention, and secure cookie properties.</p>
+              <button class="btn secondary-btn import-pack-btn" data-pack-id="security">Import Pack</button>
+            </div>
+          </div>
         </div>
 
         <div class="card form-card">
@@ -304,6 +411,92 @@
           <button id="btn-doctor-fix" class="btn primary-btn danger-btn">
             <span class="icon">🛠️</span>Repair Integrations
           </button>
+        </div>
+      </section>
+
+      <!-- Tab 5: Preview -->
+      <section id="tab-preview" class="tab-content">
+        <div class="card form-card">
+          <h3>Interactive Context Previewer</h3>
+          <p class="description">Dry-run file compression to preview exactly what your AI agent will read under different modes.</p>
+          
+          <div class="form-group">
+            <div class="label-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <label for="preview-target" style="margin: 0;">Target File Path</label>
+              <button id="btn-preview-use-active" class="text-btn" style="padding: 0;">Use Active File</button>
+            </div>
+            <input type="text" id="preview-target" placeholder="File path (e.g. src/auth.ts)">
+          </div>
+
+          <div class="form-group">
+            <label for="preview-mode-select">Preview Mode</label>
+            <select id="preview-mode-select">
+              <option value="auto">auto (Optimal automated selection)</option>
+              <option value="full">full (Complete file content)</option>
+              <option value="map">map (Dependency graph + API signs)</option>
+              <option value="signatures">signatures (tree-sitter AST)</option>
+              <option value="task">task (Task-relevant snippet filter)</option>
+              <option value="aggressive">aggressive (Syntax-stripped)</option>
+              <option value="entropy">entropy (Shannon entropy split)</option>
+              <option value="diff">diff (Modified lines only)</option>
+            </select>
+          </div>
+
+          <button id="btn-run-preview" class="btn primary-btn">
+            <span class="icon">🔍</span>Preview Context
+          </button>
+        </div>
+
+        <!-- Preview Results Display (initially hidden) -->
+        <div class="card preview-results-card" id="preview-results-card" style="display: none;">
+          <div class="preview-results-header">
+            <h3 id="preview-filename">File.ts</h3>
+            <span class="compression-ratio-badge" id="preview-reduction-badge">-0%</span>
+          </div>
+
+          <!-- Stats comparison grid -->
+          <div class="preview-stats-grid">
+            <div class="preview-stat-item">
+              <span class="stat-label">Lines</span>
+              <span class="stat-value" id="preview-stat-lines">0 → 0</span>
+            </div>
+            <div class="preview-stat-item">
+              <span class="stat-label">Size</span>
+              <span class="stat-value" id="preview-stat-size">0 B → 0 B</span>
+            </div>
+            <div class="preview-stat-item">
+              <span class="stat-label">Est. Tokens</span>
+              <span class="stat-value" id="preview-stat-tokens">0 → 0</span>
+            </div>
+          </div>
+
+          <!-- Tab group inside card for switching views -->
+          <div class="preview-view-selector">
+            <button id="btn-view-compressed" class="view-sel-btn active">Compressed</button>
+            <button id="btn-view-original" class="view-sel-btn">Original</button>
+            <button id="btn-copy-preview" class="view-copy-btn" title="Copy Content">📋 Copy</button>
+          </div>
+
+          <div class="preview-code-container">
+            <pre class="preview-code-block" id="preview-code-display">No preview loaded</pre>
+          </div>
+        </div>
+
+        <!-- Loading state -->
+        <div class="card preview-loading-card" id="preview-loading-card" style="display: none;">
+          <div class="preview-loading-spinner-wrapper">
+            <div class="preview-loading-spinner"></div>
+            <span>Compiling dry-run context...</span>
+          </div>
+        </div>
+
+        <!-- Error State -->
+        <div class="card preview-error-card" id="preview-error-card" style="display: none;">
+          <div class="error-header">
+            <span class="error-icon">❌</span>
+            <span class="error-title">Dry-Run Failed</span>
+          </div>
+          <p class="error-message-text" id="preview-error-text">An error occurred.</p>
         </div>
       </section>
     </main>
