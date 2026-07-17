@@ -180,7 +180,7 @@
   const headerBtnLaunchWeb = document.getElementById("header-btn-launch-web");
   const launchAction = () => {
     vscode.postMessage({
-      type: "launchWebDashboard",
+      type: "openFullDashboard",
     });
   };
   if (btnLaunchWeb) btnLaunchWeb.addEventListener("click", launchAction);

@@ -9,3 +9,6 @@ out/**
 .brainsync/**
 test/**
 .github/**
+.vexp/**
+AGENTS.md
+*.bak

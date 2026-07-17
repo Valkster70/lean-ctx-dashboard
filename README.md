@@ -25,6 +25,8 @@ code --install-extension lean-ctx-dashboard-*.vsix --force
 
 Open the **lean-ctx** activity-bar view, or run **lean-ctx: Open Dashboard UI** from the Command Palette.
 
+For the full Antigravity-style experience, run **lean-ctx: Open Full Dashboard**. This opens the canonical `lean-ctx dashboard --vscode` surface. The same surface is available to Codex and OpenCode through `lean_ctx_open_full_dashboard` and to browser-based clients through `lean_ctx_launch_web_dashboard`.
+
 ## Privacy
 
 The extension reads lean-ctx's local metrics and configuration files to show workspace statistics. It does not send that data to a remote service. Personal agent-context folders such as `.agent-mem/` and `.brainsync/` are intentionally excluded from source control and release packages.

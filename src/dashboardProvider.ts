@@ -256,7 +256,10 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
           await this.clearTask();
           break;
         case "launchWebDashboard":
-          await this.launchWebDashboard();
+          await this.openFullDashboard();
+          break;
+        case "openFullDashboard":
+          await this.openFullDashboard();
           break;
         case "addOverlay":
           await this.addOverlay(data.target, data.mode);
@@ -964,17 +967,21 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
   }
 
   public async launchWebDashboard() {
+    return this.openFullDashboard();
+  }
+
+  public async openFullDashboard() {
     try {
       let terminal = vscode.window.terminals.find(
-        (t) => t.name === "lean-ctx dashboard"
+        (t) => t.name === "lean-ctx full dashboard"
       );
       if (!terminal) {
-        terminal = vscode.window.createTerminal("lean-ctx dashboard");
+        terminal = vscode.window.createTerminal("lean-ctx full dashboard");
         const baseCmd = await getLeanCtxCommand();
-        terminal.sendText(`${baseCmd} dashboard`);
+        terminal.sendText(`${baseCmd} dashboard --vscode`);
       }
       terminal.show();
-      vscode.window.showInformationMessage("Launching lean-ctx web dashboard...");
+      vscode.window.showInformationMessage("Opening the full lean-ctx dashboard...");
     } catch (error: any) {
       vscode.window.showErrorMessage(
         `Failed to launch web dashboard: ${error.message || error}`

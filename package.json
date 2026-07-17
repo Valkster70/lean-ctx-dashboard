@@ -2,7 +2,7 @@
   "name": "lean-ctx-dashboard",
   "displayName": "lean-ctx Dashboard",
   "description": "Visual sidebar dashboard for lean-ctx — monitor token savings, CEP scores, cache hits, session stats, and integration health for the Context Engineering Layer.",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "publisher": "valkster70",
   "license": "MIT",
   "repository": {
@@ -76,6 +76,10 @@
       {
         "command": "lean-ctx.launchWebDashboard",
         "title": "lean-ctx: Launch Web Dashboard"
+      },
+      {
+        "command": "lean-ctx.openFullDashboard",
+        "title": "lean-ctx: Open Full Dashboard"
       }
     ]
   },

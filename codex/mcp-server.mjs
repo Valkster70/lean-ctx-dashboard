@@ -186,7 +186,7 @@ async function snapshot(args = {}) {
 }
 
 const server = new McpServer(
-  { name: "lean-ctx-dashboard", version: "1.1.0" },
+  { name: "lean-ctx-dashboard", version: "1.2.0" },
   {
     instructions:
       "Use these tools to inspect and control lean-ctx from Codex. Prefer lean_ctx_dashboard_snapshot before changing settings.",
@@ -281,12 +281,12 @@ server.registerTool(
   {
     title: "Launch lean-ctx web dashboard",
     description: "Starts lean-ctx dashboard as a detached local process.",
-    inputSchema: { workspace: z.string().optional() },
+    inputSchema: { workspace: z.string().optional(), surface: z.enum(["browser", "editor"]).default("browser") },
   },
   async (args) => {
     const cwd = workspace(args);
     const command = leanCtxBin();
-    const child = spawn(command, ["dashboard"], {
+    const child = spawn(command, ["dashboard", args.surface === "editor" ? "--vscode" : "--open=browser"], {
       cwd,
       detached: true,
       stdio: "ignore",
@@ -295,7 +295,30 @@ server.registerTool(
       shell: process.platform === "win32" && command.toLowerCase().endsWith(".cmd"),
     });
     child.unref();
-    return text("Started lean-ctx dashboard in the background.");
+    return text(`Started the canonical lean-ctx dashboard in ${args.surface} mode.`);
+  }
+);
+
+server.registerTool(
+  "lean_ctx_open_full_dashboard",
+  {
+    title: "Open the full lean-ctx dashboard",
+    description: "Opens the same full dashboard used by Antigravity, in a browser or native editor tab.",
+    inputSchema: { workspace: z.string().optional(), surface: z.enum(["browser", "editor"]).default("browser") },
+  },
+  async (args) => {
+    const cwd = workspace(args);
+    const command = leanCtxBin();
+    const child = spawn(command, ["dashboard", args.surface === "editor" ? "--vscode" : "--open=browser"], {
+      cwd,
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+      env: commandEnv(cwd),
+      shell: process.platform === "win32" && command.toLowerCase().endsWith(".cmd"),
+    });
+    child.unref();
+    return text(`Opened the canonical full dashboard in ${args.surface} mode.`);
   }
 );
 

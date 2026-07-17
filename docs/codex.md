@@ -43,7 +43,8 @@ Restart Codex after changing MCP configuration. In the Codex CLI TUI, use `/mcp`
 - `lean_ctx_compress_workspace` - runs `lean-ctx compress`.
 - `lean_ctx_set_task` - sets the active lean-ctx task.
 - `lean_ctx_remember` - records a knowledge fact or gotcha.
-- `lean_ctx_launch_web_dashboard` - starts the existing lean-ctx web dashboard command in the background.
+- `lean_ctx_launch_web_dashboard` - starts the canonical full dashboard in browser or editor mode.
+- `lean_ctx_open_full_dashboard` - explicit alias for opening the same full dashboard used by Antigravity.
 
 Most tools accept an optional `workspace` argument. If omitted, the server uses `CODEX_WORKSPACE` or the server process directory.
 
@@ -52,6 +53,8 @@ Most tools accept an optional `workspace` argument. If omitted, the server uses 
 - `CODEX_WORKSPACE` - default workspace for lean-ctx commands.
 - `LEAN_CTX_BIN` - optional path to the lean-ctx executable.
 - `LEAN_CTX_DATA_DIR` - optional path to lean-ctx's data directory.
+
+The full dashboard is the shared visual surface. VS Code exposes it through **lean-ctx: Open Full Dashboard**; Codex and OpenCode can call `lean_ctx_open_full_dashboard`; Antigravity keeps its native lean-ctx MCP server and also loads this repository bridge for the same launcher and snapshot contract.
 
 ## Antigravity remains unchanged
 

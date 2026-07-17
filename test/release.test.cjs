@@ -24,3 +24,12 @@ test("webview ships its font locally", () => {
   assert.doesNotMatch(css, /fonts\.googleapis\.com/);
   assert.match(read("src/dashboardProvider.ts"), /inter-latin-400-normal\.woff2/);
 });
+
+test("all adapters expose the canonical full dashboard", () => {
+  const provider = read("src/dashboardProvider.ts");
+  const extension = read("src/extension.ts");
+  const mcp = read("codex/mcp-server.mjs");
+  assert.match(provider, /dashboard --vscode/);
+  assert.match(extension, /lean-ctx\.openFullDashboard/);
+  assert.match(mcp, /lean_ctx_open_full_dashboard/);
+});
