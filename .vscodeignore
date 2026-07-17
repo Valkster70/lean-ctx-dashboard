@@ -5,3 +5,7 @@ esbuild.js
 src/**
 !src/webview/**
 out/**
+.agent-mem/**
+.brainsync/**
+test/**
+.github/**

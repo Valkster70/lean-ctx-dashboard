@@ -3,6 +3,9 @@ dist/
 *.vsix
 .vscode-test/
 out/
+.agent-mem/
+.brainsync/
+.vsix/
 
 # Auto-generated agent rules (personalized per developer)
 .brainsync/agent-rules.md

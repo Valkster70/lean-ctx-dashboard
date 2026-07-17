@@ -11,6 +11,7 @@
   // Pricing Model Config State
   let currentPricingModel = localStorage.getItem("lean_ctx_pricing_model") || "sonnet";
   let customPricePerM = parseFloat(localStorage.getItem("lean_ctx_custom_price")) || 3.00;
+  let contextBudget = parseInt(localStorage.getItem("lean_ctx_context_budget"), 10) || 30000;
   let activeChartMetric = localStorage.getItem("lean_ctx_chart_metric") || "tokens";
   let lastStatsMessage = null;
 
@@ -29,6 +30,22 @@
       return customPricePerM;
     }
     return MODEL_PRICES[currentPricingModel] || 3.00;
+  }
+
+  function renderBudgetGuard() {
+    if (!lastStatsMessage) return;
+    const session = lastStatsMessage.session || {};
+    const cep = lastStatsMessage.cep || {};
+    const tokens = Number(cep.tokensOriginal || cep.tokensCompressed || session.tokensOriginal || session.tokensCompressed || 0);
+    const percentage = contextBudget > 0 ? Math.min(100, Math.round((tokens / contextBudget) * 100)) : 0;
+    const status = document.getElementById("budget-status");
+    const fill = document.getElementById("budget-progress-fill");
+    const hint = document.getElementById("budget-hint");
+    if (!status || !fill || !hint) return;
+    fill.style.width = `${percentage}%`;
+    fill.className = `budget-progress-fill ${percentage >= 90 ? "danger" : percentage >= 75 ? "warning" : ""}`;
+    status.textContent = `${formatNumber(tokens)} / ${formatNumber(contextBudget)} tokens (${percentage}%)`;
+    hint.textContent = percentage >= 90 ? "Context is nearly full — compress or exclude low-value files." : percentage >= 75 ? "Context is getting large — task mode or overlays can reduce it." : "Context is within your selected budget.";
   }
 
   // Tab switching
@@ -156,10 +173,7 @@
 
   const btnCompress = document.getElementById("btn-compress");
   btnCompress.addEventListener("click", () => {
-    vscode.postMessage({
-      type: "runCLI",
-      command: "compress",
-    });
+    vscode.postMessage({ type: "compress" });
   });
 
   const btnLaunchWeb = document.getElementById("btn-launch-web");
@@ -178,8 +192,8 @@
     const task = taskInput.value.trim();
     if (!task) return;
     vscode.postMessage({
-      type: "runCLI",
-      command: `session task "${task}"`,
+      type: "setTask",
+      task,
     });
     taskInput.value = "";
   });
@@ -253,8 +267,10 @@
     if (!val) return;
 
     vscode.postMessage({
-      type: "runCLI",
-      command: `knowledge remember "${val}" --category ${cat} --key ${key}`,
+      type: "rememberKnowledge",
+      value: val,
+      category: cat,
+      key,
     });
 
     newFactVal.value = "";
@@ -408,18 +424,12 @@
   // Doctor UI handlers
   const btnDoctor = document.getElementById("btn-doctor");
   btnDoctor.addEventListener("click", () => {
-    vscode.postMessage({
-      type: "runCLI",
-      command: "doctor",
-    });
+    vscode.postMessage({ type: "runDoctor" });
   });
 
   const btnDoctorFix = document.getElementById("btn-doctor-fix");
   btnDoctorFix.addEventListener("click", () => {
-    vscode.postMessage({
-      type: "runCLI",
-      command: "doctor --fix",
-    });
+    vscode.postMessage({ type: "runDoctorFix" });
   });
 
   // Helper: animate progress ring
@@ -542,6 +552,7 @@
 
     // Re-render chart since USD and hover values may have changed
     renderDailyChart(lastStatsMessage.daily || []);
+    renderBudgetGuard();
   }
 
   // Setup pricing selector and metric listeners once DOM is parsed
@@ -550,6 +561,7 @@
     const customPriceGroup = document.getElementById("custom-price-group");
     const customPriceInput = document.getElementById("custom-price-input");
     const chartMetricSelect = document.getElementById("chart-metric-select");
+    const contextBudgetInput = document.getElementById("context-budget-input");
 
     if (pricingModelSelect && customPriceInput && customPriceGroup) {
       pricingModelSelect.value = currentPricingModel;
@@ -569,6 +581,18 @@
           customPricePerM = val;
           localStorage.setItem("lean_ctx_custom_price", customPricePerM.toString());
           applyPricingRecalculation();
+        }
+      });
+    }
+
+    if (contextBudgetInput) {
+      contextBudgetInput.value = contextBudget;
+      contextBudgetInput.addEventListener("input", () => {
+        const value = parseInt(contextBudgetInput.value, 10);
+        if (Number.isFinite(value) && value >= 1000) {
+          contextBudget = value;
+          localStorage.setItem("lean_ctx_context_budget", String(contextBudget));
+          renderBudgetGuard();
         }
       });
     }

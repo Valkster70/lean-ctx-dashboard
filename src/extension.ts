@@ -40,7 +40,7 @@ export function activate(context: vscode.ExtensionContext) {
         },
         async () => {
           try {
-            await dashboardProvider.runCLICommand("compress");
+            await dashboardProvider.runCLICommand(["compress"]);
             vscode.window.showInformationMessage(
               "Workspace context successfully compressed!"
             );
@@ -65,7 +65,7 @@ export function activate(context: vscode.ExtensionContext) {
         },
         async () => {
           try {
-            const result = await dashboardProvider.runCLICommand("doctor");
+            const result = await dashboardProvider.runCLICommand(["doctor"]);
             vscode.window.showInformationMessage(
               "Diagnostics passed! No errors detected."
             );
@@ -90,7 +90,7 @@ export function activate(context: vscode.ExtensionContext) {
         },
         async () => {
           try {
-            await dashboardProvider.runCLICommand("doctor --fix");
+            await dashboardProvider.runCLICommand(["doctor", "--fix"]);
             vscode.window.showInformationMessage(
               "Auto-repair completed successfully!"
             );

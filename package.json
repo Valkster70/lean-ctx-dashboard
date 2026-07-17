@@ -84,6 +84,7 @@
     "build": "node esbuild.js --production",
     "watch": "node esbuild.js --watch",
     "compile": "tsc -p ./",
+    "test": "node --test test/*.test.cjs",
     "package": "npx @vscode/vsce package --no-dependencies",
     "codex:mcp": "node ./codex/mcp-server.mjs"
   },

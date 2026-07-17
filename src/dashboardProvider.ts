@@ -1,10 +1,10 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import * as util from "util";
 
-const execPromise = util.promisify(exec);
+const execFilePromise = util.promisify(execFile);
 
 // Create an OutputChannel for diagnostic logs
 const outputChannel = vscode.window.createOutputChannel("lean-ctx Dashboard");
@@ -127,7 +127,10 @@ async function getLeanCtxCommand(): Promise<string> {
   if (cachedCommand) return cachedCommand;
   try {
     const options = getExecOptions(2000);
-    await execPromise("lean-ctx --version", options);
+    await execFilePromise("lean-ctx", ["--version"], {
+      ...options,
+      shell: process.platform === "win32",
+    });
     cachedCommand = "lean-ctx";
     return cachedCommand;
   } catch (err: any) {
@@ -135,13 +138,13 @@ async function getLeanCtxCommand(): Promise<string> {
     if (process.platform === "win32" && process.env.APPDATA) {
       const globalNpmCmd = path.join(process.env.APPDATA, "npm", "lean-ctx.cmd");
       if (fs.existsSync(globalNpmCmd)) {
-        cachedCommand = `"${globalNpmCmd}"`;
+        cachedCommand = globalNpmCmd;
         outputChannel.appendLine(`[Info] Found global lean-ctxCmd path: ${cachedCommand}`);
         return cachedCommand;
       }
       const globalNpm = path.join(process.env.APPDATA, "npm", "lean-ctx");
       if (fs.existsSync(globalNpm)) {
-        cachedCommand = `"${globalNpm}"`;
+        cachedCommand = globalNpm;
         outputChannel.appendLine(`[Info] Found global lean-ctx path: ${cachedCommand}`);
         return cachedCommand;
       }
@@ -152,19 +155,24 @@ async function getLeanCtxCommand(): Promise<string> {
   }
 }
 
+async function runLeanCtx(args: string[], timeoutMs: number, cwd?: string) {
+  const command = await getLeanCtxCommand();
+  return execFilePromise(command, args, {
+    ...getExecOptions(timeoutMs, cwd),
+    shell: process.platform === "win32" && command.toLowerCase().endsWith(".cmd"),
+  });
+}
+
 /**
  * Safely execute a lean-ctx CLI command and parse JSON output.
  * Returns null on any error (command not found, non-zero exit, bad JSON).
  */
-async function execLeanCtxJson(command: string, cwd?: string): Promise<any | null> {
-  const baseCmd = await getLeanCtxCommand();
-  const fullCommand = `${baseCmd} ${command}`;
+async function execLeanCtxJson(args: string[], cwd?: string): Promise<any | null> {
   try {
-    const options = getExecOptions(10000, cwd);
-    const { stdout } = await execPromise(fullCommand, options);
+    const { stdout } = await runLeanCtx(args, 10000, cwd);
     return JSON.parse(stdout.toString());
   } catch (err: any) {
-    outputChannel.appendLine(`[Error] execLeanCtxJson failed for: "${fullCommand}"`);
+    outputChannel.appendLine(`[Error] execLeanCtxJson failed for: "${args.join(" ")}"`);
     if (err.message) {
       outputChannel.appendLine(`Message: ${err.message}`);
     }
@@ -223,8 +231,20 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
         case "setReadMode":
           await this.setReadMode(data.mode);
           break;
-        case "runCLI":
-          await this.executeCLICommand(data.command);
+        case "compress":
+          await this.executeCLICommand(["compress"]);
+          break;
+        case "setTask":
+          await this.setTask(data.task);
+          break;
+        case "rememberKnowledge":
+          await this.rememberKnowledge(data.value, data.category, data.key);
+          break;
+        case "runDoctor":
+          await this.executeCLICommand(["doctor"]);
+          break;
+        case "runDoctorFix":
+          await this.executeCLICommand(["doctor", "--fix"]);
           break;
         case "removeKnowledge":
           await this.removeKnowledge(data.category, data.key);
@@ -389,10 +409,10 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
             readJsonFile(path.join(dataDir, "mcp-live.json")),
             readJsonFile(path.join(dataDir, "cost_attribution.json")),
             readEventsJsonl(path.join(dataDir, "events.jsonl")),
-            execLeanCtxJson("gain --json", workspacePath),
-            execLeanCtxJson("token-report --json", workspacePath),
-            execLeanCtxJson("status --json", workspacePath),
-            execLeanCtxJson("knowledge export --format json", workspacePath),
+            execLeanCtxJson(["gain", "--json"], workspacePath),
+            execLeanCtxJson(["token-report", "--json"], workspacePath),
+            execLeanCtxJson(["status", "--json"], workspacePath),
+            execLeanCtxJson(["knowledge", "export", "--format", "json"], workspacePath),
             overlaysPath ? readJsonFile(overlaysPath) : Promise.resolve(null),
           ]);
 
@@ -422,10 +442,7 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
 
         // Fetch gotchas (text output, not JSON)
         try {
-          const baseCmd = await getLeanCtxCommand();
-          const fullCommand = `${baseCmd} gotchas list`;
-          const options = getExecOptions(5000, workspacePath);
-          const { stdout } = await execPromise(fullCommand, options);
+          const { stdout } = await runLeanCtx(["gotchas", "list"], 5000, workspacePath);
           this._lastGotchas = stdout.toString()
             .split("\n")
             .map((line: string) => line.trim())
@@ -648,14 +665,43 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
   }
 
   private async setReadMode(mode: string) {
+    const validModes = new Set(["auto", "full", "map", "signatures", "task", "aggressive", "entropy", "diff"]);
+    if (!validModes.has(mode)) {
+      vscode.window.showErrorMessage("Unsupported lean-ctx read mode.");
+      return;
+    }
     try {
-      await this.runCLICommand(`config --set read_mode=${mode}`);
+      await this.runCLICommand(["config", "--set", `read_mode=${mode}`]);
       vscode.window.showInformationMessage(`lean-ctx read mode set to: ${mode}`);
       this.refreshStats();
     } catch (error: any) {
       vscode.window.showErrorMessage(
         `Failed to set read mode: ${error.message || error}`
       );
+    }
+  }
+
+  private async setTask(task: unknown) {
+    if (typeof task !== "string" || !task.trim()) return;
+    try {
+      await this.runCLICommand(["session", "task", task.trim()]);
+      vscode.window.showInformationMessage("lean-ctx task updated.");
+      this.refreshStats();
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to set task: ${error.message || error}`);
+    }
+  }
+
+  private async rememberKnowledge(value: unknown, category: unknown, key: unknown) {
+    if (typeof value !== "string" || !value.trim()) return;
+    const safeCategory = typeof category === "string" && category.trim() ? category.trim() : "general";
+    const safeKey = typeof key === "string" && key.trim() ? key.trim() : `fact-${Date.now()}`;
+    try {
+      await this.runCLICommand(["knowledge", "remember", value.trim(), "--category", safeCategory, "--key", safeKey]);
+      vscode.window.showInformationMessage("Knowledge saved.");
+      this.refreshStats();
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to save knowledge: ${error.message || error}`);
     }
   }
 
@@ -728,7 +774,7 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
       }, async () => {
         await Promise.all(
           pack.map(fact =>
-            this.runCLICommand(`knowledge remember "${fact.val}" --category ${fact.cat} --key ${fact.key}`)
+            this.runCLICommand(["knowledge", "remember", fact.val, "--category", fact.cat, "--key", fact.key])
           )
         );
         vscode.window.showInformationMessage(`Successfully imported [${packId}] gotchas template pack.`);
@@ -739,11 +785,11 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private async executeCLICommand(command: string) {
+  private async executeCLICommand(args: string[]) {
     try {
-      await this.runCLICommand(command);
+      await this.runCLICommand(args);
       vscode.window.showInformationMessage(
-        `lean-ctx command executed: ${command}`
+        `lean-ctx command executed: ${args.join(" ")}`
       );
       this.refreshStats();
     } catch (error: any) {
@@ -755,7 +801,7 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
 
   private async removeKnowledge(category: string, key: string) {
     try {
-      await this.runCLICommand(`knowledge remove --category ${category} --key ${key}`);
+      await this.runCLICommand(["knowledge", "remove", "--category", category, "--key", key]);
       vscode.window.showInformationMessage(`Fact [${category}] ${key} removed.`);
       this.refreshStats();
     } catch (error: any) {
@@ -767,7 +813,7 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
 
   private async clearTask() {
     try {
-      await this.runCLICommand("session reset");
+      await this.runCLICommand(["session", "reset"]);
       vscode.window.showInformationMessage(`lean-ctx session/task reset.`);
       this.refreshStats();
     } catch (error: any) {
@@ -781,11 +827,11 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
     try {
       if (!target) return;
       if (mode === "pin") {
-        await this.runCLICommand(`control pin "${target}"`);
+        await this.runCLICommand(["control", "pin", target]);
       } else if (mode === "exclude") {
-        await this.runCLICommand(`control exclude "${target}"`);
+        await this.runCLICommand(["control", "exclude", target]);
       } else {
-        await this.runCLICommand(`control set_view "${target}" --value ${mode}`);
+        await this.runCLICommand(["control", "set_view", target, "--value", mode]);
       }
       vscode.window.showInformationMessage(`Overlay set for ${target}: ${mode}`);
       this.refreshStats();
@@ -799,7 +845,7 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
   private async removeOverlay(target: string) {
     try {
       if (!target) return;
-      await this.runCLICommand(`control reset "${target}"`);
+      await this.runCLICommand(["control", "reset", target]);
       vscode.window.showInformationMessage(`Overlay reset for ${target}`);
       this.refreshStats();
     } catch (error: any) {
@@ -877,7 +923,8 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
       
       const fullPath = path.resolve(workspacePath, relativePath);
       
-      if (!fullPath.startsWith(workspacePath)) {
+      const relativeToWorkspace = path.relative(workspacePath, fullPath);
+      if (relativeToWorkspace.startsWith("..") || path.isAbsolute(relativeToWorkspace)) {
         throw new Error("Target file must be within the active workspace.");
       }
       
@@ -892,11 +939,7 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
 
       const originalContent = await fs.promises.readFile(fullPath, "utf8");
       
-      const baseCmd = await getLeanCtxCommand();
-      const options = getExecOptions(15000, workspacePath);
-      const cmd = `${baseCmd} read "${relativePath}" -m ${mode}`;
-      
-      const { stdout } = await execPromise(cmd, options);
+      const { stdout } = await runLeanCtx(["read", relativePath, "-m", mode], 15000, workspacePath);
       const compressedContent = stdout.toString();
       
       this._view.webview.postMessage({
@@ -939,16 +982,13 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  public async runCLICommand(command: string): Promise<string> {
+  public async runCLICommand(args: string[]): Promise<string> {
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    const baseCmd = await getLeanCtxCommand();
-    const fullCommand = `${baseCmd} ${command}`;
     try {
-      const options = getExecOptions(15000, workspacePath);
-      const { stdout } = await execPromise(fullCommand, options);
+      const { stdout } = await runLeanCtx(args, 15000, workspacePath);
       return stdout.toString();
     } catch (err: any) {
-      outputChannel.appendLine(`[Error] runCLICommand failed for: "${fullCommand}"`);
+      outputChannel.appendLine(`[Error] runCLICommand failed for: "${args.join(" ")}"`);
       if (err.message) {
         outputChannel.appendLine(`Message: ${err.message}`);
       }
@@ -965,7 +1005,7 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
   public async getGainRate(): Promise<{ rate: number; saved: number } | null> {
     try {
       const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-      const gain = await execLeanCtxJson("gain --json", workspacePath);
+      const gain = await execLeanCtxJson(["gain", "--json"], workspacePath);
       if (gain?.summary) {
         return {
           rate: gain.summary.gain_rate_pct || 0,
@@ -983,6 +1023,9 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
     const jsUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this._extensionUri, "src", "webview", "dashboard.js")
     );
+    const fontUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this._extensionUri, "media", "fonts", "inter-latin-400-normal.woff2")
+    );
 
     const htmlPath = path.join(
       this._extensionUri.fsPath,
@@ -995,6 +1038,7 @@ export class LeanCtxDashboardProvider implements vscode.WebviewViewProvider {
       htmlContent = fs.readFileSync(htmlPath, "utf8");
       htmlContent = htmlContent.replace("${cssUri}", cssUri.toString());
       htmlContent = htmlContent.replace("${jsUri}", jsUri.toString());
+      htmlContent = htmlContent.replace("${fontUri}", fontUri.toString());
     } else {
       htmlContent = `
         <!DOCTYPE html>

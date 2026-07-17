@@ -14,7 +14,20 @@ cd lean-ctx-dashboard
 npm install
 ```
 
-The exact build/dev scripts live in `package.json` (typical: `npm run build` to bundle via esbuild, `npm run dev` for watch mode). To load as a VS Code extension: open the folder in VS Code, press `F5` to launch an Extension Development Host with the dashboard attached. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full dev workflow.
+Use `npm run build` to bundle via esbuild, `npm run watch` during development, and `npm test` before opening a pull request. To load the extension in development, open the folder in VS Code and press `F5` to launch an Extension Development Host with the dashboard attached. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full workflow.
+
+## Install a packaged build
+
+```bash
+npm run package
+code --install-extension lean-ctx-dashboard-*.vsix --force
+```
+
+Open the **lean-ctx** activity-bar view, or run **lean-ctx: Open Dashboard UI** from the Command Palette.
+
+## Privacy
+
+The extension reads lean-ctx's local metrics and configuration files to show workspace statistics. It does not send that data to a remote service. Personal agent-context folders such as `.agent-mem/` and `.brainsync/` are intentionally excluded from source control and release packages.
 
 ## Project layout
 

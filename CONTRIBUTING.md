@@ -50,6 +50,7 @@ The extension is a VS Code sidebar webview that:
 ```bash
 npm run build          # Production build
 npm run package        # Create .vsix file
+npm test               # Run release-contract checks
 ```
 
 ## Testing
@@ -57,7 +58,7 @@ npm run package        # Create .vsix file
 After making changes:
 
 1. Run `npm run build`
-2. Install the extension: `code --install-extension lean-ctx-dashboard-*.vsix`
+2. Install the extension: `code --install-extension lean-ctx-dashboard-*.vsix --force`
 3. Reload the editor and check the lean-ctx sidebar
 
 ## Pull Requests
@@ -65,3 +66,4 @@ After making changes:
 - Keep changes focused and well-documented
 - Test on both Windows and macOS/Linux if possible
 - Update the README if adding new features
+- Do not add `.agent-mem/`, `.brainsync/`, local paths, or credentials to commits or VSIX packages

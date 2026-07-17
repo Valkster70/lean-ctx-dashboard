@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
 :root {
   --primary-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
   --secondary-gradient: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%);
@@ -1554,6 +1552,14 @@ select:focus, input[type="text"]:focus {
 .flex-1 {
   flex: 1;
 }
+
+.budget-card { margin-top: 14px; }
+.budget-summary { flex: 2; display: flex; flex-direction: column; justify-content: end; gap: 7px; font-size: 11px; color: var(--text-muted); }
+.budget-progress { height: 7px; border-radius: 999px; overflow: hidden; background: rgba(255, 255, 255, 0.1); }
+.budget-progress-fill { width: 0; height: 100%; border-radius: inherit; background: var(--success-color); transition: width .25s ease, background .25s ease; }
+.budget-progress-fill.warning { background: var(--warning-color); }
+.budget-progress-fill.danger { background: var(--danger-color); }
+.budget-hint { margin: 10px 0 0; color: var(--text-muted); font-size: 11px; }
 
 /* Daily breakdown layout updates */
 .daily-header {
